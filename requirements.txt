@@ -6,4 +6,4 @@ plotly
 PyPortfolioOpt
 quantstats
 matplotlib
-sklearn
+scikit-learn
