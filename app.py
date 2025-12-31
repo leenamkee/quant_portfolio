@@ -54,12 +54,24 @@ if st.sidebar.button("분석 실행"):
                 tab1, tab2, tab3 = st.tabs(["성과 분석", "자산 배분", "데이터"])
                 
                 with tab1:
-                    st.subheader("포트폴리오 가치 추이")
-                    fig_line = px.line(history, y="Portfolio Value", title="Portfolio Value Over Time")
+                    st.subheader("포트폴리오 가치 추이 (CAGR 반영)")
+                    # CAGR 계산을 위한 보조 데이터
+                    history['Daily Return'] = history['Portfolio Value'].pct_change()
+                    
+                    # 포트폴리오 가치 차트
+                    fig_line = px.line(history, y="Portfolio Value", title=f"Portfolio Value Over Time (CAGR: {metrics['Annualized Return']:.2%})")
                     st.plotly_chart(fig_line, use_container_width=True)
                     
+                    # MDD 차트 추가
+                    st.subheader("낙폭 (Drawdown) 시각화")
+                    history['Cumulative Max'] = history['Portfolio Value'].cummax()
+                    history['Drawdown'] = (history['Portfolio Value'] - history['Cumulative Max']) / history['Cumulative Max']
+                    
+                    fig_dd = px.area(history, y="Drawdown", title=f"Portfolio Drawdown (MDD: {metrics['Max Drawdown']:.2%})", color_discrete_sequence=['red'])
+                    fig_dd.update_yaxes(tickformat=".2%")
+                    st.plotly_chart(fig_dd, use_container_width=True)
+
                     st.subheader("일간 수익률 분포")
-                    history['Daily Return'] = history['Portfolio Value'].pct_change()
                     fig_hist = px.histogram(history, x="Daily Return", nbins=50, title="Daily Return Distribution")
                     st.plotly_chart(fig_hist, use_container_width=True)
                 
