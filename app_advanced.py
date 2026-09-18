@@ -18,6 +18,14 @@ TICKER_NAMES = {
     "458730.KS": "TIGER 미국배당다우존스",
 }
 
+TARGET_WEIGHTS_PCT = {
+    "284430.KS": 18.0,
+    "360750.KS": 36.0,
+    "411060.KS": 10.0,
+    "441640.KS": 18.0,
+    "458730.KS": 18.0,
+}
+
 st.title("📈 퀀트 포트폴리오 구성 및 리밸런싱")
 st.markdown("""
 이 앱은 주식 포트폴리오를 최적화하고 리밸런싱 전략에 따른 성과를 시뮬레이션합니다.
@@ -129,18 +137,18 @@ with tab2:
     
     with col1:
         st.subheader("포트폴리오 구성")
-        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", "AAPL, MSFT, GOOGL", key="custom_tickers")
+        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", "284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="custom_tickers")
         tickers_list = [t.strip() for t in tickers_custom.split(",")]
-        
+
         weights_custom = {}
         st.write("각 종목의 비중을 입력하세요 (합계 100% 필요):")
-        
+
         cols = st.columns(len(tickers_list))
         for idx, ticker in enumerate(tickers_list):
             with cols[idx]:
                 weights_custom[ticker] = st.number_input(
-                    f"{ticker} 비중 (%)",
-                    value=100/len(tickers_list),
+                    f"{TICKER_NAMES.get(ticker, ticker)} 비중 (%)",
+                    value=TARGET_WEIGHTS_PCT.get(ticker, 100/len(tickers_list)),
                     step=1.0,
                     key=f"weight_{ticker}"
                 ) / 100
@@ -200,9 +208,10 @@ with tab2:
                     with tab2_2:
                         st.subheader("포트폴리오 구성")
                         weight_df = pd.DataFrame(list(weights_custom.items()), columns=['Ticker', 'Weight'])
-                        fig_pie = px.pie(weight_df, values='Weight', names='Ticker', title="Portfolio Weights")
+                        weight_df.insert(1, '종목명', weight_df['Ticker'].map(TICKER_NAMES).fillna(weight_df['Ticker']))
+                        fig_pie = px.pie(weight_df, values='Weight', names='종목명', title="Portfolio Weights")
                         st.plotly_chart(fig_pie, use_container_width=True)
-                        
+
                         st.table(weight_df.style.format({'Weight': '{:.2%}'}))
                     
                     with tab2_3:
