@@ -10,6 +10,14 @@ import rebalancing_guide as rg
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 
+TICKER_NAMES = {
+    "284430.KS": "KODEX 200미국채혼합50",
+    "360750.KS": "TIGER 미국S&P500",
+    "411060.KS": "ACE KRX 금현물",
+    "441640.KS": "KODEX 미국배당커버드콜액티브",
+    "458730.KS": "TIGER 미국배당다우존스",
+}
+
 st.title("📈 퀀트 포트폴리오 구성 및 리밸런싱")
 st.markdown("""
 이 앱은 주식 포트폴리오를 최적화하고 리밸런싱 전략에 따른 성과를 시뮬레이션합니다.
@@ -223,7 +231,7 @@ with tab3:
         st.subheader("현재 보유 수량")
         holdings_input = st.text_area(
             "현재 보유 수량 (형식: TICKER:SHARES, 한 줄에 하나씩)",
-            "AAPL:10\nMSFT:5\nGOOGL:3",
+            "284430.KS:2274\n360750.KS:3221\n411060.KS:766\n441640.KS:3497\n458730.KS:2954",
             key="holdings_input"
         )
         
@@ -240,7 +248,7 @@ with tab3:
         st.subheader("목표 비중")
         weights_input = st.text_area(
             "목표 비중 (형식: TICKER:WEIGHT%, 한 줄에 하나씩)",
-            "AAPL:50\nMSFT:30\nGOOGL:20",
+            "284430.KS:18\n360750.KS:36\n411060.KS:10\n441640.KS:18\n458730.KS:18",
             key="weights_input"
         )
         
@@ -280,26 +288,28 @@ with tab3:
                     col3.metric("예상 거래 비용", f"${transaction_cost:.2f}")
                     col4.metric("순 현금 필요", f"${max(0, cash_needed) + transaction_cost:.2f}")
                     
+                    rebalancing_df.insert(1, '종목명', rebalancing_df['Ticker'].map(TICKER_NAMES).fillna(rebalancing_df['Ticker']))
+
                     st.subheader("리밸런싱 액션 테이블")
                     st.dataframe(rebalancing_df, use_container_width=True)
-                    
+
                     # 매수/매도 분류
                     st.subheader("거래 요약")
                     buy_actions = rebalancing_df[rebalancing_df['Shares to Buy/Sell'].astype(str).str.contains('-') == False]
                     buy_actions = buy_actions[buy_actions['Shares to Buy/Sell'] != '0']
-                    
+
                     sell_actions = rebalancing_df[rebalancing_df['Shares to Buy/Sell'].astype(str).str.contains('-')]
-                    
+
                     col1, col2 = st.columns(2)
                     with col1:
                         st.write(f"**매수 종목**: {len(buy_actions)}개")
                         if len(buy_actions) > 0:
-                            st.dataframe(buy_actions[['Ticker', 'Shares to Buy/Sell', 'Current Price']], use_container_width=True)
-                    
+                            st.dataframe(buy_actions[['Ticker', '종목명', 'Shares to Buy/Sell', 'Current Price']], use_container_width=True)
+
                     with col2:
                         st.write(f"**매도 종목**: {len(sell_actions)}개")
                         if len(sell_actions) > 0:
-                            st.dataframe(sell_actions[['Ticker', 'Shares to Buy/Sell', 'Current Price']], use_container_width=True)
+                            st.dataframe(sell_actions[['Ticker', '종목명', 'Shares to Buy/Sell', 'Current Price']], use_container_width=True)
                     
             except Exception as e:
                 st.error(f"오류가 발생했습니다: {e}")
