@@ -25,17 +25,17 @@ with tab1:
     
     # 사이드바 설정
     st.sidebar.header("⚙️ 자동 최적화 설정")
-    tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", "AAPL, MSFT, GOOGL, AMZN, TSLA", key="tab1_tickers")
+    tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", "284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="tab1_tickers")
     tickers = [t.strip() for t in tickers_input.split(",")]
     
     start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365*2), key="tab1_start")
     end_date = st.sidebar.date_input("종료일", datetime.now(), key="tab1_end")
     
-    initial_capital = st.sidebar.number_input("초기 자본 ($)", value=10000, step=1000, key="tab1_capital")
+    initial_capital = st.sidebar.number_input("초기 자본 (원)", value=10000000, step=1000000, key="tab1_capital")
     rebalance_freq = st.sidebar.selectbox("리밸런싱 주기", ["None", "M", "Q", "Y"], index=1, key="tab1_rebalance")
     if rebalance_freq == "None": rebalance_freq = None
     
-    opt_method = st.sidebar.selectbox("최적화 방법", ["max_sharpe", "min_volatility", "equal_weight"], key="tab1_method")
+    opt_method = st.sidebar.selectbox("최적화 방법", ["max_sharpe", "min_volatility", "equal_weight", "target_weight"], key="tab1_method")
     
     if st.sidebar.button("분석 실행", key="tab1_button"):
         with st.spinner("데이터를 가져오고 분석 중입니다..."):
