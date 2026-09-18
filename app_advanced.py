@@ -11,6 +11,7 @@ import rebalancing_guide as rg
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 
 TICKER_NAMES = {
+    "273130.KS": "KODEX 종합채권(AA-이상)액티브",
     "284430.KS": "KODEX 200미국채혼합50",
     "360750.KS": "TIGER 미국S&P500",
     "411060.KS": "ACE KRX 금현물",
@@ -18,12 +19,14 @@ TICKER_NAMES = {
     "458730.KS": "TIGER 미국배당다우존스",
 }
 
+# DC형 퇴직연금 위험자산 70% 한도 준수: 안전자산(채권형) 30% + 위험자산 70%
 TARGET_WEIGHTS_PCT = {
-    "284430.KS": 18.0,
-    "360750.KS": 36.0,
-    "411060.KS": 10.0,
-    "441640.KS": 18.0,
-    "458730.KS": 18.0,
+    "273130.KS": 30.0,
+    "411060.KS": 7.0,
+    "360750.KS": 25.0,
+    "284430.KS": 13.0,
+    "441640.KS": 13.0,
+    "458730.KS": 12.0,
 }
 
 st.title("📈 퀀트 포트폴리오 구성 및 리밸런싱")
@@ -41,7 +44,7 @@ with tab1:
     
     # 사이드바 설정
     st.sidebar.header("⚙️ 자동 최적화 설정")
-    tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", "284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="tab1_tickers")
+    tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", "273130.KS, 284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="tab1_tickers")
     tickers = [t.strip() for t in tickers_input.split(",")]
     
     start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365*2), key="tab1_start")
@@ -137,7 +140,7 @@ with tab2:
     
     with col1:
         st.subheader("포트폴리오 구성")
-        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", "284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="custom_tickers")
+        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", "273130.KS, 284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="custom_tickers")
         tickers_list = [t.strip() for t in tickers_custom.split(",")]
 
         weights_custom = {}
@@ -257,7 +260,7 @@ with tab3:
         st.subheader("목표 비중")
         weights_input = st.text_area(
             "목표 비중 (형식: TICKER:WEIGHT%, 한 줄에 하나씩)",
-            "284430.KS:18\n360750.KS:36\n411060.KS:10\n441640.KS:18\n458730.KS:18",
+            "273130.KS:30\n411060.KS:7\n360750.KS:25\n284430.KS:13\n441640.KS:13\n458730.KS:12",
             key="weights_input"
         )
         

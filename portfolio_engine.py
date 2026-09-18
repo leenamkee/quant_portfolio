@@ -13,23 +13,27 @@ def get_stock_data(tickers, start_date, end_date):
         data = data.to_frame()
     return data
 
-def target_weight_portfolio(tickers, gold_ticker="411060.KS", sp500_ticker="360750.KS", gold_weight=0.10, sp500_weight=0.36):
-    """
-    금ETF(gold_weight)와 S&P500 ETF(sp500_weight)에 목표 비중을 지정하고,
-    나머지 종목들은 남은 비중을 균등하게 나눠 갖습니다.
-    """
-    rest = [t for t in tickers if t not in (gold_ticker, sp500_ticker)]
-    rest_weight = (1 - gold_weight - sp500_weight) / len(rest) if rest else 0
+# DC형 퇴직연금 위험자산 70% 한도 준수: 안전자산(채권형, 주식 0%) 30% + 위험자산 70%
+DEFAULT_TARGET_WEIGHTS = {
+    "273130.KS": 0.30,  # KODEX 종합채권(AA-이상)액티브 - 안전자산
+    "411060.KS": 0.07,  # ACE KRX 금현물 - 위험자산
+    "360750.KS": 0.25,  # TIGER 미국S&P500 - 위험자산
+    "284430.KS": 0.13,  # KODEX 200미국채혼합50 - 위험자산
+    "441640.KS": 0.13,  # KODEX 미국배당커버드콜액티브 - 위험자산
+    "458730.KS": 0.12,  # TIGER 미국배당다우존스 - 위험자산
+}
 
-    weights = {}
-    for t in tickers:
-        if t == gold_ticker:
-            weights[t] = gold_weight
-        elif t == sp500_ticker:
-            weights[t] = sp500_weight
-        else:
-            weights[t] = rest_weight
-    return weights
+def target_weight_portfolio(tickers):
+    """
+    DEFAULT_TARGET_WEIGHTS에 정의된 목표 비중을 반환합니다.
+    입력 티커가 전부 정의되어 있지 않으면 동일 가중치로 대체합니다.
+    """
+    if tickers and all(t in DEFAULT_TARGET_WEIGHTS for t in tickers):
+        total = sum(DEFAULT_TARGET_WEIGHTS[t] for t in tickers)
+        return {t: DEFAULT_TARGET_WEIGHTS[t] / total for t in tickers}
+
+    n = len(tickers)
+    return {t: 1.0 / n for t in tickers}
 
 def optimize_portfolio(data, method='max_sharpe'):
     """
