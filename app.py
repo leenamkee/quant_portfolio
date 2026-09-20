@@ -15,7 +15,7 @@ st.markdown("""
 
 # 사이드바 설정
 st.sidebar.header("설정")
-tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", "273130.KS, 284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS")
+tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", ", ".join(sorted(pe.DEFAULT_TARGET_WEIGHTS)))
 tickers = [t.strip() for t in tickers_input.split(",")]
 
 start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365*2))
@@ -87,7 +87,7 @@ if st.sidebar.button("분석 실행"):
                     latest_prices = data.iloc[-1]
                     allocation, leftover = pe.get_discrete_allocation(weights, latest_prices, initial_capital)
                     st.subheader("추천 매수 수량 (현재가 기준)")
-                    st.write(f"남은 현금: ${leftover:.2f}")
+                    st.write(f"남은 현금: {leftover:,.0f}원")
                     st.table(pd.DataFrame(list(allocation.items()), columns=['Ticker', 'Shares']))
 
                 with tab3:

@@ -1,6 +1,16 @@
 import pandas as pd
 import numpy as np
 
+def get_rebalance_dates(index, rebalance_freq):
+    """
+    각 기간(월/분기/연)의 마지막 실제 거래일을 반환합니다.
+    resample().last().index는 달력상 기간 말일이라 휴장일이면 거래일과 일치하지 않는다.
+    """
+    if not rebalance_freq:
+        return pd.DatetimeIndex([])
+    periods = index.to_period(rebalance_freq)
+    return pd.DatetimeIndex(index.to_series().groupby(periods).max().values)
+
 def backtest_rebalancing(data, initial_weights, rebalance_freq='M', initial_capital=10000):
     """
     리밸런싱을 포함한 백테스트를 수행합니다.
@@ -9,15 +19,14 @@ def backtest_rebalancing(data, initial_weights, rebalance_freq='M', initial_capi
     returns = data.pct_change().dropna()
     portfolio_value = initial_capital
     current_weights = np.array([initial_weights[ticker] for ticker in data.columns])
-    
+    # 비중 합이 1이 아니면 리밸런싱할 때마다 자산이 줄거나 늘어나므로 정규화한다
+    current_weights = current_weights / current_weights.sum()
+
     portfolio_history = []
     dates = returns.index
-    
+
     # 리밸런싱 날짜 설정
-    if rebalance_freq:
-        rebalance_dates = data.resample(rebalance_freq).last().index
-    else:
-        rebalance_dates = []
+    rebalance_dates = get_rebalance_dates(data.index, rebalance_freq)
 
     current_portfolio_value = initial_capital
     

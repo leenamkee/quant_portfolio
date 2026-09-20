@@ -13,7 +13,17 @@ def get_stock_data(tickers, start_date, end_date):
         data = data.to_frame()
     return data
 
+TICKER_NAMES = {
+    "273130.KS": "KODEX 종합채권(AA-이상)액티브",
+    "284430.KS": "KODEX 200미국채혼합50",
+    "360750.KS": "TIGER 미국S&P500",
+    "411060.KS": "ACE KRX 금현물",
+    "441640.KS": "KODEX 미국배당커버드콜액티브",
+    "458730.KS": "TIGER 미국배당다우존스",
+}
+
 # DC형 퇴직연금 위험자산 70% 한도 준수: 안전자산(채권형, 주식 0%) 30% + 위험자산 70%
+# 앱의 기본 티커/비중 입력값도 이 딕셔너리에서 만들어지므로 여기만 수정하면 된다.
 DEFAULT_TARGET_WEIGHTS = {
     "273130.KS": 0.30,  # KODEX 종합채권(AA-이상)액티브 - 안전자산
     "411060.KS": 0.07,  # ACE KRX 금현물 - 위험자산

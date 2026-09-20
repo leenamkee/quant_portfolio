@@ -68,13 +68,13 @@ def calculate_rebalancing_guide(current_holdings, target_weights, current_prices
         rebalancing_data.append({
             'Ticker': ticker,
             'Current Shares': int(current_shares),
-            'Current Price': f"${current_price:.2f}",
-            'Current Value': f"${current_value:.2f}",
+            'Current Price': f"{current_price:,.0f}원",
+            'Current Value': f"{current_value:,.0f}원",
             'Current Weight': f"{current_weight:.2%}",
             'Target Weight': f"{target_weight:.2%}",
             'Target Shares': int(np.round(target_shares)),
             'Shares to Buy/Sell': int(np.round(shares_diff)),
-            'Transaction Value': f"${abs(value_diff):.2f}"
+            'Transaction Value': f"{abs(value_diff):,.0f}원"
         })
         
         if shares_diff > 0:
@@ -162,5 +162,5 @@ if __name__ == "__main__":
     
     print("\nRebalancing Guide:")
     print(rebalancing_df)
-    print(f"\nTotal Portfolio Value: ${total_value:.2f}")
-    print(f"Cash Needed: ${cash_needed:.2f}")
+    print(f"\nTotal Portfolio Value: {total_value:,.0f}원")
+    print(f"Cash Needed: {cash_needed:,.0f}원")

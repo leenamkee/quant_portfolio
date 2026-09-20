@@ -10,24 +10,10 @@ import rebalancing_guide as rg
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 
-TICKER_NAMES = {
-    "273130.KS": "KODEX 종합채권(AA-이상)액티브",
-    "284430.KS": "KODEX 200미국채혼합50",
-    "360750.KS": "TIGER 미국S&P500",
-    "411060.KS": "ACE KRX 금현물",
-    "441640.KS": "KODEX 미국배당커버드콜액티브",
-    "458730.KS": "TIGER 미국배당다우존스",
-}
-
-# DC형 퇴직연금 위험자산 70% 한도 준수: 안전자산(채권형) 30% + 위험자산 70%
-TARGET_WEIGHTS_PCT = {
-    "273130.KS": 30.0,
-    "411060.KS": 7.0,
-    "360750.KS": 25.0,
-    "284430.KS": 13.0,
-    "441640.KS": 13.0,
-    "458730.KS": 12.0,
-}
+TICKER_NAMES = pe.TICKER_NAMES
+TARGET_WEIGHTS_PCT = {t: round(w * 100, 1) for t, w in pe.DEFAULT_TARGET_WEIGHTS.items()}
+DEFAULT_TICKERS = ", ".join(sorted(pe.DEFAULT_TARGET_WEIGHTS))
+DEFAULT_WEIGHTS_TEXT = "\n".join(f"{t}:{w:g}" for t, w in TARGET_WEIGHTS_PCT.items())
 
 st.title("📈 퀀트 포트폴리오 구성 및 리밸런싱")
 st.markdown("""
@@ -44,7 +30,7 @@ with tab1:
     
     # 사이드바 설정
     st.sidebar.header("⚙️ 자동 최적화 설정")
-    tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", "273130.KS, 284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="tab1_tickers")
+    tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", DEFAULT_TICKERS, key="tab1_tickers")
     tickers = [t.strip() for t in tickers_input.split(",")]
     
     start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365*2), key="tab1_start")
@@ -113,7 +99,7 @@ with tab1:
                         latest_prices = data.iloc[-1]
                         allocation, leftover = pe.get_discrete_allocation(weights, latest_prices, initial_capital)
                         st.subheader("추천 매수 수량 (현재가 기준)")
-                        st.write(f"남은 현금: ${leftover:.2f}")
+                        st.write(f"남은 현금: {leftover:,.0f}원")
                         st.table(pd.DataFrame(list(allocation.items()), columns=['Ticker', 'Shares']))
                     
                     with tab1_3:
@@ -140,7 +126,7 @@ with tab2:
     
     with col1:
         st.subheader("포트폴리오 구성")
-        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", "273130.KS, 284430.KS, 360750.KS, 411060.KS, 441640.KS, 458730.KS", key="custom_tickers")
+        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", DEFAULT_TICKERS, key="custom_tickers")
         tickers_list = [t.strip() for t in tickers_custom.split(",")]
 
         weights_custom = {}
@@ -160,7 +146,7 @@ with tab2:
         st.subheader("백테스트 설정")
         custom_start_date = st.date_input("시작일", datetime.now() - timedelta(days=365*2), key="custom_start")
         custom_end_date = st.date_input("종료일", datetime.now(), key="custom_end")
-        custom_initial_capital = st.number_input("초기 자본 ($)", value=10000, step=1000, key="custom_capital")
+        custom_initial_capital = st.number_input("초기 자본 (원)", value=10000000, step=1000000, key="custom_capital")
         custom_rebalance_freq = st.selectbox("리밸런싱 주기", ["None", "M", "Q", "Y"], index=1, key="custom_rebalance")
         if custom_rebalance_freq == "None": custom_rebalance_freq = None
     
@@ -260,7 +246,7 @@ with tab3:
         st.subheader("목표 비중")
         weights_input = st.text_area(
             "목표 비중 (형식: TICKER:WEIGHT%, 한 줄에 하나씩)",
-            "273130.KS:30\n411060.KS:7\n360750.KS:25\n284430.KS:13\n441640.KS:13\n458730.KS:12",
+            DEFAULT_WEIGHTS_TEXT,
             key="weights_input"
         )
         
@@ -295,10 +281,10 @@ with tab3:
                     
                     # 요약 정보
                     col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("포트폴리오 총 가치", f"${total_value:.2f}")
-                    col2.metric("필요한 현금", f"${max(0, cash_needed):.2f}")
-                    col3.metric("예상 거래 비용", f"${transaction_cost:.2f}")
-                    col4.metric("순 현금 필요", f"${max(0, cash_needed) + transaction_cost:.2f}")
+                    col1.metric("포트폴리오 총 가치", f"{total_value:,.0f}원")
+                    col2.metric("필요한 현금", f"{max(0, cash_needed):,.0f}원")
+                    col3.metric("예상 거래 비용", f"{transaction_cost:,.0f}원")
+                    col4.metric("순 현금 필요", f"{max(0, cash_needed) + transaction_cost:,.0f}원")
                     
                     rebalancing_df.insert(1, '종목명', rebalancing_df['Ticker'].map(TICKER_NAMES).fillna(rebalancing_df['Ticker']))
 
@@ -307,10 +293,8 @@ with tab3:
 
                     # 매수/매도 분류
                     st.subheader("거래 요약")
-                    buy_actions = rebalancing_df[rebalancing_df['Shares to Buy/Sell'].astype(str).str.contains('-') == False]
-                    buy_actions = buy_actions[buy_actions['Shares to Buy/Sell'] != '0']
-
-                    sell_actions = rebalancing_df[rebalancing_df['Shares to Buy/Sell'].astype(str).str.contains('-')]
+                    buy_actions = rebalancing_df[rebalancing_df['Shares to Buy/Sell'] > 0]
+                    sell_actions = rebalancing_df[rebalancing_df['Shares to Buy/Sell'] < 0]
 
                     col1, col2 = st.columns(2)
                     with col1:
