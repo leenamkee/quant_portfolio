@@ -76,6 +76,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
 ## 배포 (Streamlit Community Cloud)
 
 - 로컬 디스크는 휘발성이다. 재부팅/재배포 시 앱이 쓴 파일은 사라지므로 **파일에 저장하는 방식의 영속화는 동작하지 않는다.** 포트폴리오 저장 기능은 `docs/portfolio-storage-research.md`의 설계(GitHub API로 JSON 커밋 + 다운로드/업로드 백업)를 따른다.
+- 다른 모듈에 새 상수/함수를 추가하고 앱에서 참조하는 변경을 푸시하면, 실행 중인 Cloud 프로세스가 옛 모듈을 캐시하고 있어 `AttributeError`가 날 수 있다. 이 경우 코드 문제가 아니므로 Manage app → Reboot app을 먼저 시도한다 (2026-09-20 `pe.TICKER_NAMES` 사례).
 - 비밀 값(토큰 등)은 `st.secrets`(Cloud의 App settings → Secrets)로만 다루고 저장소에 커밋하지 않는다.
 
 ## 작업 규칙

@@ -4,6 +4,11 @@
 
 ## 2026-09-20
 
+### Cloud 배포 후 AttributeError 진단 (코드 변경 없음)
+- 증상: 커밋 `6683306` 푸시 후 Streamlit Cloud에서 `app_advanced.py` 13행 `pe.TICKER_NAMES`에 `AttributeError`.
+- 원인: 커밋된 `portfolio_engine.py`에는 `TICKER_NAMES`가 있음을 `git show HEAD:portfolio_engine.py`로 확인. 실행 중인 Cloud 프로세스가 재배포 후에도 옛 `portfolio_engine` 모듈을 `sys.modules`에 들고 있어 발생한 캐시 문제.
+- 조치: Manage app → Reboot app으로 해결. 모듈 간 상수를 새로 주고받는 변경을 배포한 뒤에는 재부팅이 필요할 수 있어 Agent.md에 기록.
+
 ### 프로젝트 문서화
 - `Agent.md`(에이전트/개발자 가이드)와 `README.md`를 새로 작성. 파일 역할, 데이터 흐름, 기본 종목·비중, DC 70% 룰, 수정 시 함정, 배포 제약을 정리.
 - 이 문서에 "모든 작업을 worklog.md에 기록한다"는 규칙을 추가.
