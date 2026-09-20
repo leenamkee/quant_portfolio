@@ -120,6 +120,32 @@ PAT는 이 저장소만 대상으로 하는 fine-grained 토큰을 만들고, �
 
 `portfolios.json`을 읽어 각 항목의 `tickers`/`weights`로 기존 `rebalance_engine.backtest_rebalancing`을 반복 실행하고, 결과를 하나의 표·차트로 나란히 보여준다(예: 포트폴리오별 누적수익률 곡선 겹치기, CAGR/샤프/MDD 비교표).
 
+## 구현 결과 (2026-09-20)
+
+추천안대로 구현했다. 코드는 [portfolio_store.py](../portfolio_store.py)와 `app_advanced.py`의 탭2(저장), 탭4 "포트폴리오 비교"에 있다. 원안과 달라진 점은 다음과 같다.
+
+| 항목 | 원안 | 구현 | 이유 |
+| --- | --- | --- | --- |
+| 저장 위치 | 저장소(main)의 `data/portfolios.json` | **별도 `data` 브랜치**의 `data/portfolios.json` | Cloud는 추적 브랜치에 푸시가 있을 때마다 앱을 자동 갱신한다([Manage your app](https://docs.streamlit.io/deploy/streamlit-community-cloud/manage-your-app)). main에 커밋하면 저장할 때마다 앱이 재배포되어 작업 중이던 세션이 초기화된다. `data` 브랜치는 없으면 자동 생성된다. |
+| GitHub 클라이언트 | PyGithub | `requests`로 Contents API 직접 호출 | 이미 `requirements.txt`에 있어 의존성을 추가하지 않는다. |
+| 충돌 처리 | 없음 | 409/422(sha 불일치) 시 최신본을 다시 읽어 최대 3회 재시도 | 동시 저장 시 유실 방지 ([GitHub 409 사례](https://github.com/orgs/community/discussions/62198)) |
+| 스키마 | 백테스트 설정(기간·자본·주기) 포함 | `id`, `name`, `created_at`, `tickers`, `weights`만 저장 | 비교할 때 기간·자본·주기를 동일하게 맞춰야 공정하므로 비교 화면에서 입력받는다. |
+| 토큰 없을 때 | (미정) | 로컬 파일(`data/portfolios.json`)로 대체 + 경고 표시 | 로컬 개발용. Cloud에서는 재시작 시 사라진다. |
+
+**주의 — 코드 저장소가 공개(public)면 저장한 포트폴리오도 공개된다.** 이 프로젝트의 저장소(`leenamkee/quant_portfolio`)는 공개 저장소라서, 같은 저장소의 `data` 브랜치에 저장하면 누구나 읽을 수 있다. 데이터는 **별도의 비공개 저장소**(예: `quant_portfolio_data`, 최소 1개 커밋이 있어야 함)에 저장하는 것을 권장한다. 이 경우 앱 코드 저장소를 건드리지 않으므로 재배포 문제도 없다. `GITHUB_REPO`만 바꾸면 된다.
+
+Secrets 설정(Streamlit Cloud → App settings → Secrets):
+
+```toml
+GITHUB_TOKEN = "github_pat_..."          # 데이터 저장소 하나에만 Contents: Read and write 권한
+GITHUB_REPO = "leenamkee/quant_portfolio_data"   # 권장: 비공개 데이터 저장소
+GITHUB_DATA_BRANCH = "data"              # 생략 가능 (기본값 data, 없으면 자동 생성)
+```
+
+사용 흐름: 탭2에서 종목 비중 입력 → "현재 구성 저장" → 탭4에서 여러 포트폴리오를 선택해 기간·초기 자본·리밸런싱 주기를 맞춰 성과 지표와 가치 추이를 나란히 비교. 백업/복원(JSON 다운로드·업로드)과 삭제도 탭4에 있다.
+
+여러 명이 함께 쓰는 경우의 확장 방안은 [multi-user-plan.md](multi-user-plan.md)를 참고.
+
 ## 참고 자료
 
 - [Files lost after reboot in Streamlit Cloud – Streamlit 커뮤니티](https://discuss.streamlit.io/t/files-lost-after-reboot-in-streamlit-cloud/33917)

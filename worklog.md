@@ -4,6 +4,16 @@
 
 ## 2026-09-20
 
+### 포트폴리오 저장/비교 기능 구현 + 다인 사용 방안 문서 (미커밋)
+- `portfolio_store.py` 신규: `GitHubBackend`(Contents API, 별도 `data` 브랜치 자동 생성, 409/422 시 최신본 재조회 후 최대 3회 재시도), `LocalBackend`(파일, 개발용), `get_backend(st.secrets)`(토큰 없으면 로컬로 대체), 저장/덮어쓰기/삭제/가져오기/검증 함수. 새 의존성 없음(`requests` 사용).
+- `app_advanced.py`: 탭2에 "현재 구성 저장"(이름 필수, 비중 합 100% 검증, 같은 이름은 덮어쓰기), 탭4 "포트폴리오 비교" 추가(선택한 포트폴리오를 동일 기간·자본·주기로 백테스트, 지표 표 + 가치 추이 차트, 삭제, JSON 백업 다운로드/업로드). 시세는 `st.cache_data`(1시간)로 캐시.
+- 원안(main에 커밋) 대신 `data` 브랜치를 쓴 이유: Cloud가 추적 브랜치 푸시마다 앱을 재배포하기 때문. 원안과의 차이는 `docs/portfolio-storage-research.md`의 "구현 결과"에 정리.
+- **발견: 코드 저장소가 공개(public)** (GitHub API로 확인). 같은 저장소에 데이터를 저장하면 공개되므로 `GITHUB_REPO`를 별도 비공개 저장소로 지정하는 것을 권장하도록 문서화. 탭3 기본 보유 수량(실제 보유 수량)이 이미 공개 이력에 있음을 확인 — 삭제/이력 정리 여부는 사용자 결정 대기.
+- `docs/multi-user-plan.md` 신규: 3~4명 사용 방안(비공개 데이터 저장소 + `st.login` 허용 이메일 + 사용자별 JSON 파일, 단계별 로드맵, 리스크). 저장소/저장 구조와 규모 판단은 조사 기반이며 Cloud에서의 Yahoo 요청 제한과 Cloud 비공개 앱의 사용자 식별 가능 여부는 확인하지 못함(문서에 명시).
+- `.gitignore`에 `data/portfolios.json` 추가(로컬 개발 파일이 커밋되지 않도록).
+- 확인 방법: 저장 모듈 단위 테스트(로컬 백엔드 실파일, GitHub 백엔드는 가짜 서버로 브랜치 생성·최초 저장·409 재시도·PUT 순서 검증), Streamlit `AppTest`로 임시 복사본에서 저장 검증 오류 → 저장 2건 → 실제 yfinance 데이터로 비교 → 삭제 흐름 실행(예외 없음). 이 과정에서 두 번째 저장 항목이 비교 선택에 자동 포함되지 않는 문제를 발견해 저장 시 자동 선택하도록 수정.
+- 남은 이슈: 실제 GitHub 토큰으로 한 종단 테스트는 하지 못함(가짜 서버 검증만). 사용자가 비공개 저장소·토큰을 만들어 Secrets를 설정한 뒤 실제 저장이 되는지 확인 필요.
+
 ### Cloud 배포 후 AttributeError 진단 (코드 변경 없음)
 - 증상: 커밋 `6683306` 푸시 후 Streamlit Cloud에서 `app_advanced.py` 13행 `pe.TICKER_NAMES`에 `AttributeError`.
 - 원인: 커밋된 `portfolio_engine.py`에는 `TICKER_NAMES`가 있음을 `git show HEAD:portfolio_engine.py`로 확인. 실행 중인 Cloud 프로세스가 재배포 후에도 옛 `portfolio_engine` 모듈을 `sys.modules`에 들고 있어 발생한 캐시 문제.
@@ -25,7 +35,7 @@
 
 남은 이슈
 - `rebalancing_guide.get_current_prices`는 최신일이 아니라 직전 거래일 종가를 사용(의도 여부 미확인, 그대로 둠).
-- 포트폴리오 저장/비교 기능은 아직 구현 전 (설계는 `docs/portfolio-storage-research.md`).
+- 포트폴리오 저장/비교 기능은 이 뒤 작업에서 구현함 (위 항목 참고).
 
 ### 포트폴리오 저장 방법 리서치
 - Streamlit Community Cloud에서 DB 없이 여러 포트폴리오를 저장·비교하는 방법을 조사해 `docs/portfolio-storage-research.md`로 저장 (claude.ai 문서에서 옮김).

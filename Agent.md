@@ -4,7 +4,7 @@
 
 ## 프로젝트 개요
 
-Streamlit 기반 퀀트 포트폴리오 매니저. `yfinance`로 시세를 받아 포트폴리오 최적화, 리밸런싱 백테스트, 보유 수량 기반 리밸런싱 가이드를 제공한다. Streamlit Community Cloud에 배포해 개인용(1인)으로 사용한다. UI 문구, 주석, docstring은 모두 한국어다.
+Streamlit 기반 퀀트 포트폴리오 매니저. `yfinance`로 시세를 받아 포트폴리오 최적화, 리밸런싱 백테스트, 보유 수량 기반 리밸런싱 가이드를 제공한다. Streamlit Community Cloud에 배포해 개인용(1인)으로 사용한다. 3~4명이 함께 쓰는 확장 방안은 `docs/multi-user-plan.md`. UI 문구, 주석, docstring은 모두 한국어다.
 
 현재 기본 포트폴리오는 **DC형 퇴직연금 계좌**용 국내 상장 ETF 6종목이다 (위험자산 70% 한도 준수, 아래 "도메인 규칙" 참고).
 
@@ -12,7 +12,7 @@ Streamlit 기반 퀀트 포트폴리오 매니저. `yfinance`로 시세를 받�
 
 ```bash
 pip install -r requirements.txt
-streamlit run app_advanced.py   # 메인 앱 (3개 탭)
+streamlit run app_advanced.py   # 메인 앱 (4개 탭)
 streamlit run app.py            # 초기 단일 페이지 버전
 ```
 
@@ -24,13 +24,14 @@ streamlit run app.py            # 초기 단일 페이지 버전
 
 | 파일 | 역할 |
 | --- | --- |
-| `app_advanced.py` | 메인 Streamlit 앱. 탭1 자동 최적화 / 탭2 사용자 정의 백테스트 / 탭3 리밸런싱 가이드 |
+| `app_advanced.py` | 메인 Streamlit 앱. 탭1 자동 최적화 / 탭2 사용자 정의 백테스트(+포트폴리오 저장) / 탭3 리밸런싱 가이드 / 탭4 포트폴리오 비교 |
 | `app.py` | 초기 버전 단일 페이지 앱 (탭1과 유사, 이후 기능 미반영 부분 있음) |
 | `portfolio_engine.py` | 시세 조회(`get_stock_data`), 최적화(`optimize_portfolio`: max_sharpe / min_volatility / equal_weight / target_weight), 목표 비중(`DEFAULT_TARGET_WEIGHTS`), 이산 매수 수량(`get_discrete_allocation`) |
 | `rebalance_engine.py` | 리밸런싱 백테스트(`backtest_rebalancing`)와 성과 지표(`calculate_metrics`) |
 | `custom_backtest.py` | 사용자 정의 비중 백테스트. 누락 티커 제거·정규화 후 `rebalance_engine.backtest_rebalancing`에 위임 |
 | `rebalancing_guide.py` | 현재가 조회, 보유 수량 대비 매수/매도 수량 계산, 거래 비용 계산 |
-| `docs/` | 리서치/설계 문서 (예: `portfolio-storage-research.md`) |
+| `portfolio_store.py` | 저장한 포트폴리오의 영속화. `GitHubBackend`(GitHub Contents API, 별도 `data` 브랜치) / `LocalBackend`(로컬 파일, 개발용). 앱은 `get_backend(st.secrets)`로 선택 |
+| `docs/` | 리서치/설계 문서: `portfolio-storage-research.md`(저장 방식), `multi-user-plan.md`(3~4명 사용 방안) |
 | `worklog.md` | 작업 기록 (아래 "작업 규칙" 참고) |
 | `*.md` (루트, 한글 파일명) | 초기 사용 가이드 문서 |
 
@@ -75,7 +76,10 @@ streamlit run app.py            # 초기 단일 페이지 버전
 
 ## 배포 (Streamlit Community Cloud)
 
-- 로컬 디스크는 휘발성이다. 재부팅/재배포 시 앱이 쓴 파일은 사라지므로 **파일에 저장하는 방식의 영속화는 동작하지 않는다.** 포트폴리오 저장 기능은 `docs/portfolio-storage-research.md`의 설계(GitHub API로 JSON 커밋 + 다운로드/업로드 백업)를 따른다.
+- 로컬 디스크는 휘발성이다. 재부팅/재배포 시 앱이 쓴 파일은 사라지므로 **로컬 파일 저장(`LocalBackend`)은 Cloud에서 영속화가 되지 않는다.** 저장한 포트폴리오는 `portfolio_store.GitHubBackend`가 GitHub의 JSON 파일(`data/portfolios.json`)에 커밋해 보관하고, 탭4의 JSON 다운로드/업로드가 백업 수단이다. 설계 배경은 `docs/portfolio-storage-research.md`.
+- **Cloud는 추적 브랜치(main)에 푸시가 있을 때마다 앱을 재배포한다.** 그래서 저장 데이터는 main이 아닌 별도 브랜치(`data`)나 별도 저장소에 커밋한다. 데이터 커밋을 main에 하지 않는다.
+- **코드 저장소(`leenamkee/quant_portfolio`)는 공개(public)다.** 데이터를 같은 저장소에 저장하면 누구나 읽을 수 있으므로, 운영 시 `GITHUB_REPO`는 별도의 비공개 저장소로 지정한다. 실제 보유 수량 같은 민감한 값을 코드나 커밋에 넣지 않는다(탭3 기본 보유 수량은 이미 이력에 남아 있음, `docs/multi-user-plan.md` 참고).
+- 저장소 관련 secrets: `GITHUB_TOKEN`(데이터 저장소 한 곳에만 Contents 읽기/쓰기), `GITHUB_REPO`, 선택 `GITHUB_DATA_BRANCH`(기본 `data`). 없으면 로컬 파일로 대체되고 탭4에 경고가 뜬다.
 - 다른 모듈에 새 상수/함수를 추가하고 앱에서 참조하는 변경을 푸시하면, 실행 중인 Cloud 프로세스가 옛 모듈을 캐시하고 있어 `AttributeError`가 날 수 있다. 이 경우 코드 문제가 아니므로 Manage app → Reboot app을 먼저 시도한다 (2026-09-20 `pe.TICKER_NAMES` 사례).
 - 비밀 값(토큰 등)은 `st.secrets`(Cloud의 App settings → Secrets)로만 다루고 저장소에 커밋하지 않는다.
 
