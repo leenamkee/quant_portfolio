@@ -67,6 +67,41 @@ def refresh_saved_portfolios():
         st.session_state["store_error"] = str(e)
 
 
+def ticker_name(ticker):
+    return TICKER_NAMES.get(ticker, "(미등록)")
+
+
+def normalize_ticker(text):
+    ticker = text.strip().upper()
+    if len(ticker) == 6 and ticker.isdigit():
+        ticker += ".KS"
+    return ticker
+
+
+def row_controls(table_key, version_key, edited, new_row, prefix):
+    """표 아래의 종목 추가/제거 UI. 표를 바꾸면 에디터 키(version)를 올려 편집 상태를 초기화한다."""
+    version = st.session_state[version_key]
+    add_col, remove_col = st.columns(2)
+    with add_col:
+        new_ticker = st.text_input("종목 추가 (티커 또는 6자리 종목코드)", key=f"{prefix}_new_{version}", placeholder="예: 360750.KS 또는 360750")
+        if st.button("종목 추가", key=f"{prefix}_add_button"):
+            ticker = normalize_ticker(new_ticker)
+            if not ticker:
+                st.error("추가할 티커를 입력하세요.")
+            elif ticker in edited["티커"].values:
+                st.warning(f"{ticker}은(는) 이미 표에 있습니다.")
+            else:
+                st.session_state[table_key] = pd.concat([edited, pd.DataFrame([new_row(ticker)])], ignore_index=True)
+                st.session_state[version_key] += 1
+                st.rerun()
+    with remove_col:
+        to_remove = st.multiselect("종목 제거", list(edited["티커"]), format_func=lambda t: f"{t} · {ticker_name(t)}", key=f"{prefix}_remove_{version}")
+        if st.button("선택 종목 제거", key=f"{prefix}_remove_button") and to_remove:
+            st.session_state[table_key] = edited[~edited["티커"].isin(to_remove)].reset_index(drop=True)
+            st.session_state[version_key] += 1
+            st.rerun()
+
+
 if "saved_portfolios" not in st.session_state:
     refresh_saved_portfolios()
 
@@ -175,28 +210,80 @@ with tab1:
 # ============ TAB 2: 사용자 정의 백테스트 ============
 with tab2:
     st.header("사용자 정의 포트폴리오 백테스트")
-    st.markdown("원하는 종목과 비중을 입력하여 백테스트를 수행합니다.")
-    
+    st.markdown("표에서 종목별 비중을 입력해 백테스트합니다. 저장한 포트폴리오를 불러와 수정하거나, 새로 구성해 저장할 수 있습니다.")
+    if st.session_state.get("bt_flash"):
+        st.success(st.session_state.pop("bt_flash"))
+
+    def bt_default_table():
+        tickers = list(pe.DEFAULT_TARGET_WEIGHTS)
+        return pd.DataFrame({
+            "티커": tickers,
+            "종목명": [ticker_name(t) for t in tickers],
+            "비중(%)": [float(TARGET_WEIGHTS_PCT[t]) for t in tickers],
+        })
+
+    if "bt_table" not in st.session_state:
+        st.session_state["bt_table"] = bt_default_table()
+        st.session_state["bt_version"] = 0
+
+    saved_list = st.session_state["saved_portfolios"]
+    saved_labels = {p["id"]: f"{p['name']} · {p.get('owner_name') or '작성자 없음'}" for p in saved_list}
+    load_col1, load_col2, load_col3 = st.columns([3, 1, 1])
+    load_id = load_col1.selectbox(
+        "저장된 포트폴리오 불러오기", list(saved_labels), format_func=saved_labels.get, index=None,
+        placeholder="저장된 포트폴리오를 선택하세요" if saved_list else "저장된 포트폴리오가 없습니다", key="bt_load_select",
+    )
+    load_col2.write("")
+    load_col3.write("")
+    if load_col2.button("불러오기", key="bt_load_button", disabled=load_id is None):
+        chosen = next(p for p in saved_list if p["id"] == load_id)
+        st.session_state["bt_table"] = pd.DataFrame({
+            "티커": chosen["tickers"],
+            "종목명": [ticker_name(t) for t in chosen["tickers"]],
+            "비중(%)": [round(chosen["weights"][t] * 100, 4) for t in chosen["tickers"]],
+        })
+        st.session_state["bt_version"] += 1
+        st.session_state["bt_loaded"] = saved_labels[load_id]
+        mine = ps.can_modify(chosen, identity.key)
+        st.session_state["save_name"] = chosen["name"] if mine else f"{chosen['name']} (내 복사본)"
+        st.rerun()
+    if load_col3.button("기본 구성으로 초기화", key="bt_reset_button"):
+        st.session_state["bt_table"] = bt_default_table()
+        st.session_state["bt_version"] += 1
+        st.session_state.pop("bt_loaded", None)
+        st.rerun()
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.subheader("포트폴리오 구성")
-        tickers_custom = st.text_input("티커 입력 (쉼표로 구분)", DEFAULT_TICKERS, key="custom_tickers")
-        tickers_list = [t.strip() for t in tickers_custom.split(",")]
+        if st.session_state.get("bt_loaded"):
+            st.caption(f"불러온 포트폴리오: {st.session_state['bt_loaded']} (표를 수정해도 저장하기 전에는 원본이 바뀌지 않습니다)")
+        bt_edited = st.data_editor(
+            st.session_state["bt_table"],
+            key=f"bt_editor_{st.session_state['bt_version']}",
+            hide_index=True,
+            use_container_width=True,
+            disabled=["티커", "종목명"],
+            column_config={
+                "비중(%)": st.column_config.NumberColumn("비중(%)", min_value=0.0, max_value=100.0, step=0.5, format="%.1f"),
+            },
+        ).fillna(0)
 
-        weights_custom = {}
-        st.write("각 종목의 비중을 입력하세요 (합계 100% 필요):")
+        weights_custom = {row["티커"]: float(row["비중(%)"]) / 100 for _, row in bt_edited.iterrows() if row["비중(%)"] > 0}
+        tickers_list = list(weights_custom)
+        bt_total = bt_edited["비중(%)"].sum()
+        if abs(bt_total - 100) > 0.05:
+            st.warning(f"비중 합계가 {bt_total:.1f}%입니다. 백테스트는 비율에 맞춰 계산하지만, 저장하려면 100%로 맞추세요.")
+        else:
+            st.caption(f"비중 합계: {bt_total:.1f}%")
 
-        cols = st.columns(len(tickers_list))
-        for idx, ticker in enumerate(tickers_list):
-            with cols[idx]:
-                weights_custom[ticker] = st.number_input(
-                    f"{TICKER_NAMES.get(ticker, ticker)} 비중 (%)",
-                    value=TARGET_WEIGHTS_PCT.get(ticker, 100/len(tickers_list)),
-                    step=1.0,
-                    key=f"weight_{ticker}"
-                ) / 100
-    
+        row_controls(
+            "bt_table", "bt_version", bt_edited,
+            lambda t: {"티커": t, "종목명": ticker_name(t), "비중(%)": 0.0},
+            "bt",
+        )
+
     with col2:
         st.subheader("백테스트 설정")
         custom_start_date = st.date_input("시작일", datetime.now() - timedelta(days=365*2), key="custom_start")
@@ -221,11 +308,15 @@ with tab2:
                 saved_id = next(p["id"] for p in data["portfolios"] if p["name"] == save_name.strip())
                 current = [i for i in st.session_state.get("compare_selected", []) if i in {p["id"] for p in data["portfolios"]}]
                 st.session_state["compare_selected"] = current + ([saved_id] if saved_id not in current else [])
-                st.success(f"'{save_name.strip()}' 저장 완료 → '포트폴리오 비교' 탭에서 비교할 수 있습니다. ({store.label})")
+                st.session_state["bt_flash"] = f"'{save_name.strip()}' 저장 완료 → '포트폴리오 비교' 탭에서 비교할 수 있습니다. ({store.label})"
+                st.rerun()
             except ps.StoreError as e:
                 st.error(f"저장 실패: {e}")
 
-    if st.button("백테스트 실행", key="custom_button"):
+    run_backtest = st.button("백테스트 실행", key="custom_button")
+    if run_backtest and not tickers_list:
+        st.error("비중이 0보다 큰 종목이 없습니다. 표에 비중을 입력하세요.")
+    elif run_backtest:
         with st.spinner("백테스트 중입니다..."):
             try:
                 # 데이터 가져오기
@@ -298,9 +389,6 @@ with tab3:
     st.header("리밸런싱 가이드")
     st.markdown("현재 보유 수량을 입력하고 목표 비중을 설정하면 리밸런싱 가이드를 제공합니다.")
     
-    def rb_name(ticker):
-        return TICKER_NAMES.get(ticker, "(미등록)")
-
     if "rb_table" not in st.session_state:
         try:
             saved_holdings = ps.load_holdings(user_store)
@@ -310,7 +398,7 @@ with tab3:
         initial_tickers = list(pe.DEFAULT_TARGET_WEIGHTS) + [t for t in saved_holdings if t not in pe.DEFAULT_TARGET_WEIGHTS]
         st.session_state["rb_table"] = pd.DataFrame({
             "티커": initial_tickers,
-            "종목명": [rb_name(t) for t in initial_tickers],
+            "종목명": [ticker_name(t) for t in initial_tickers],
             "현재 수량": [int(saved_holdings.get(t, 0)) for t in initial_tickers],
             "목표 비중(%)": [float(TARGET_WEIGHTS_PCT.get(t, 0.0)) for t in initial_tickers],
         })
@@ -341,28 +429,11 @@ with tab3:
     else:
         st.caption(f"목표 비중 합계: {total_pct:.1f}%")
 
-    add_col, remove_col = st.columns(2)
-    with add_col:
-        new_ticker = st.text_input("종목 추가 (티커 또는 6자리 종목코드)", key=f"rb_new_{version}", placeholder="예: 360750.KS 또는 360750")
-        if st.button("종목 추가", key="rb_add_button"):
-            ticker = new_ticker.strip().upper()
-            if len(ticker) == 6 and ticker.isdigit():
-                ticker += ".KS"
-            if not ticker:
-                st.error("추가할 티커를 입력하세요.")
-            elif ticker in edited["티커"].values:
-                st.warning(f"{ticker}은(는) 이미 표에 있습니다.")
-            else:
-                new_row = pd.DataFrame({"티커": [ticker], "종목명": [rb_name(ticker)], "현재 수량": [0], "목표 비중(%)": [0.0]})
-                st.session_state["rb_table"] = pd.concat([edited, new_row], ignore_index=True)
-                st.session_state["rb_version"] += 1
-                st.rerun()
-    with remove_col:
-        to_remove = st.multiselect("종목 제거", list(edited["티커"]), format_func=lambda t: f"{t} · {rb_name(t)}", key=f"rb_remove_{version}")
-        if st.button("선택 종목 제거", key="rb_remove_button") and to_remove:
-            st.session_state["rb_table"] = edited[~edited["티커"].isin(to_remove)].reset_index(drop=True)
-            st.session_state["rb_version"] += 1
-            st.rerun()
+    row_controls(
+        "rb_table", "rb_version", edited,
+        lambda t: {"티커": t, "종목명": ticker_name(t), "현재 수량": 0, "목표 비중(%)": 0.0},
+        "rb",
+    )
 
     if st.button("내 보유 수량 저장", key="save_holdings_button"):
         try:
@@ -441,6 +512,7 @@ with tab4:
 
     if st.button("저장소에서 다시 불러오기", key="reload_portfolios"):
         refresh_saved_portfolios()
+        st.rerun()
 
     saved = st.session_state["saved_portfolios"]
 
