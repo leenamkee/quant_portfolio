@@ -9,6 +9,7 @@ import rebalance_engine as re
 import custom_backtest as cb
 import rebalancing_guide as rg
 import portfolio_store as ps
+import auth
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 
@@ -29,6 +30,33 @@ def load_prices(tickers, start, end):
 
 
 store = get_store()
+
+identity = auth.resolve_identity(st.user, st.secrets, store.persistent)
+if identity.status == "login":
+    st.title("📈 퀀트 포트폴리오 매니저")
+    st.info("허용된 Google 계정으로 로그인해야 사용할 수 있습니다.")
+    st.button("Google로 로그인", on_click=st.login, type="primary")
+    st.stop()
+if identity.status in ("denied", "misconfigured"):
+    st.error(identity.message)
+    if identity.status == "denied":
+        st.button("다른 계정으로 로그인", on_click=st.logout)
+    st.stop()
+
+
+@st.cache_resource
+def get_user_store(key):
+    return ps.get_backend(st.secrets, ps.user_path(key))
+
+
+user_store = get_user_store(identity.key)
+
+st.sidebar.markdown(f"👤 **{identity.name}**")
+if identity.dev:
+    st.sidebar.caption("로그인 미설정: 로컬 개발 모드")
+else:
+    st.sidebar.caption(identity.email)
+    st.sidebar.button("로그아웃", on_click=st.logout, key="logout_button")
 
 
 def refresh_saved_portfolios():
@@ -189,7 +217,7 @@ with tab2:
             st.error(f"비중 합계가 {total_weight:.1%}입니다. 100%로 맞춘 뒤 저장하세요.")
         else:
             try:
-                data = ps.upsert_portfolio(store, ps.make_portfolio(save_name, weights_custom))
+                data = ps.upsert_portfolio(store, ps.make_portfolio(save_name, weights_custom, identity.key, identity.name))
                 st.session_state["saved_portfolios"] = data["portfolios"]
                 saved_id = next(p["id"] for p in data["portfolios"] if p["name"] == save_name.strip())
                 current = [i for i in st.session_state.get("compare_selected", []) if i in {p["id"] for p in data["portfolios"]}]
@@ -271,25 +299,48 @@ with tab3:
     st.header("리밸런싱 가이드")
     st.markdown("현재 보유 수량을 입력하고 목표 비중을 설정하면 리밸런싱 가이드를 제공합니다.")
     
+    if "holdings_initial" not in st.session_state:
+        try:
+            saved_holdings = ps.load_holdings(user_store)
+        except ps.StoreError as e:
+            saved_holdings = {}
+            st.warning(f"저장된 보유 수량을 불러오지 못했습니다: {e}")
+        st.session_state["holdings_initial"] = (
+            "\n".join(f"{t}:{n}" for t, n in saved_holdings.items())
+            or "\n".join(f"{t}:0" for t in DEFAULT_TICKERS.split(", "))
+        )
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        st.subheader("현재 보유 수량")
+        st.subheader("현재 보유 수량 (나만 볼 수 있음)")
         holdings_input = st.text_area(
             "현재 보유 수량 (형식: TICKER:SHARES, 한 줄에 하나씩)",
-            "284430.KS:2274\n360750.KS:3221\n411060.KS:766\n441640.KS:3497\n458730.KS:2954",
+            st.session_state["holdings_initial"],
             key="holdings_input"
         )
-        
+
         current_holdings = {}
+        holdings_valid = True
         try:
             for line in holdings_input.strip().split('\n'):
                 if line.strip():
                     ticker, shares = line.split(':')
                     current_holdings[ticker.strip()] = int(shares.strip())
         except:
-            st.error("입력 형식이 올바르지 않습니다. (예: AAPL:10)")
-    
+            holdings_valid = False
+            st.error("입력 형식이 올바르지 않습니다. (예: 360750.KS:100)")
+
+        if st.button("내 보유 수량 저장", key="save_holdings_button"):
+            if not holdings_valid:
+                st.error("입력 형식을 먼저 바로잡으세요.")
+            else:
+                try:
+                    ps.save_holdings(user_store, current_holdings)
+                    st.success("보유 수량을 저장했습니다. 다음에 접속하면 자동으로 불러옵니다.")
+                except ps.StoreError as e:
+                    st.error(f"저장 실패: {e}")
+
     with col2:
         st.subheader("목표 비중")
         weights_input = st.text_area(
@@ -316,6 +367,8 @@ with tab3:
                 
                 if not current_prices:
                     st.error("현재 주가를 가져오지 못했습니다.")
+                elif sum(current_holdings.values()) == 0:
+                    st.warning("보유 수량이 모두 0입니다. 현재 보유 수량을 입력한 뒤 다시 생성하세요.")
                 else:
                     # 리밸런싱 가이드 생성
                     rebalancing_df, total_value, cash_needed = rg.calculate_rebalancing_guide(
@@ -380,16 +433,18 @@ with tab4:
         st.info("저장된 포트폴리오가 없습니다. '사용자 정의 백테스트' 탭에서 비중을 입력하고 '현재 구성 저장'을 눌러 추가하세요.")
     else:
         names = {p["id"]: p["name"] for p in saved}
+        labels = {p["id"]: f"{p['name']} · {p.get('owner_name') or '작성자 없음'}" for p in saved}
+        mine = {p["id"]: p["name"] for p in saved if ps.can_modify(p, identity.key)}
 
         with st.expander(f"저장된 포트폴리오 구성 ({len(saved)}개)"):
             rows = []
             for p in saved:
                 for t, w in p["weights"].items():
-                    rows.append({"포트폴리오": p["name"], "티커": t, "종목명": TICKER_NAMES.get(t, t), "비중": f"{w:.1%}"})
+                    rows.append({"포트폴리오": p["name"], "작성자": p.get("owner_name") or "-", "티커": t, "종목명": TICKER_NAMES.get(t, t), "비중": f"{w:.1%}"})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         selected = st.multiselect("비교할 포트폴리오", list(names), default=list(names)[:4],
-                                  format_func=names.get, key="compare_selected")
+                                  format_func=labels.get, key="compare_selected")
 
         c1, c2, c3, c4 = st.columns(4)
         cmp_start = c1.date_input("시작일", datetime.now() - timedelta(days=365*2), key="cmp_start")
@@ -442,11 +497,11 @@ with tab4:
                     except Exception as e:
                         st.error(f"오류가 발생했습니다: {e}")
 
-        with st.expander("삭제"):
-            to_delete = st.multiselect("삭제할 포트폴리오", list(names), format_func=names.get, key="delete_selected")
+        with st.expander("삭제 (내가 만든 포트폴리오만)"):
+            to_delete = st.multiselect("삭제할 포트폴리오", list(mine), format_func=mine.get, key="delete_selected")
             if st.button("선택 항목 삭제", key="delete_button") and to_delete:
                 try:
-                    data = ps.delete_portfolios(store, to_delete)
+                    data = ps.delete_portfolios(store, to_delete, identity.key)
                     st.session_state["saved_portfolios"] = data["portfolios"]
                     st.success(f"{len(to_delete)}개 삭제했습니다.")
                     st.rerun()
@@ -465,9 +520,9 @@ with tab4:
         if uploaded is not None and st.button("가져오기", key="import_button"):
             try:
                 incoming = ps.validate_import(json.load(uploaded))
-                data = ps.import_portfolios(store, incoming)
+                data, skipped = ps.import_portfolios(store, incoming, identity.key, identity.name)
                 st.session_state["saved_portfolios"] = data["portfolios"]
-                st.success(f"{len(incoming)}개를 가져왔습니다.")
+                st.success(f"{len(incoming) - skipped}개를 가져왔습니다." + (f" (다른 사용자 소유 {skipped}개는 건너뜀)" if skipped else ""))
                 st.rerun()
             except (ps.StoreError, json.JSONDecodeError) as e:
                 st.error(f"가져오기 실패: {e}")

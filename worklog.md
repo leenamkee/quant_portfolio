@@ -2,6 +2,21 @@
 
 최신 작업이 위에 옵니다. 작업할 때마다 이 파일에 기록하고 같은 커밋에 포함합니다 (규칙: [Agent.md](Agent.md) 참고).
 
+## 2026-09-21
+
+### Google 로그인 연동 + 공용 포트폴리오 + 사용자별 보유 수량 (미커밋)
+- 결정(사용자 답변): 모두가 서로의 포트폴리오를 볼 수 있음 / 보유 수량은 사용자별 저장 / 4명 모두 Google 계정 → Google 로그인 연동.
+- `auth.py` 신규: `resolve_identity()`로 로그인 상태, `ALLOWED_EMAILS`(대소문자 무시), `email_verified`를 판정. 로그인 설정이 없고 GitHub 저장소만 설정된 경우는 데이터 보호를 위해 앱을 열지 않는 fail-closed. 둘 다 없으면 로컬 개발 모드. 사용자 키는 이메일 SHA-256 앞 12자리.
+- `portfolio_store.py`: 포트폴리오에 `owner_key`/`owner_name` 기록, 다른 사용자가 만든 이름으로 저장·삭제·덮어쓰기 방지(`can_modify`, 작성자 없는 이전 데이터는 누구나 수정), 가져오기에서 남의 항목은 건너뜀(충돌 재시도 시 건너뛴 개수가 누적되지 않도록 수정), 사용자별 보유 수량 `load_holdings`/`save_holdings`(정수·0 이상 검증), `get_backend(secrets, path)`로 경로별 백엔드.
+- `app_advanced.py`: 로그인 게이트(로그인/거부/설정 오류 화면), 사이드바에 사용자·로그아웃, 탭3 보유 수량 "내 보유 수량 저장" + 접속 시 자동 불러오기, 보유 수량이 모두 0이면 경고, 탭4에 작성자 표시·본인 것만 삭제. **공개 저장소 코드에 있던 실제 보유 수량 기본값을 제거**(기본은 기본 티커 0주). 이력에는 여전히 남아 있음.
+- **발견**: `st.login`은 Authlib가 필요한데 `requirements.txt`에 없었다 → 그대로 배포하면 로그인 버튼이 실패했을 것. `streamlit[auth]==1.52.2`로 변경(UTF-16 인코딩 유지, `pip --dry-run`으로 Authlib 설치 확인).
+- 문서: `docs/google-login-setup.md` 신규(비공개 데이터 저장소·토큰, Google OAuth 클라이언트·테스트 사용자, Secrets, 문제 해결), `docs/multi-user-plan.md`를 확정된 결정과 구현 상태로 갱신, README/Agent.md 갱신, `.gitignore`에 `data/users/`와 `.streamlit/secrets.toml` 추가(로컬 secrets에 토큰·OAuth 비밀값이 들어가는데 무시 규칙이 없었음).
+- 확인 방법: `auth.resolve_identity` 단위 테스트(개발 모드, GitHub만 설정 시 차단, 미로그인, 허용/거부, 대소문자, `email_verified=False`, 허용 목록 없음/빈 목록/문자열), 저장소 테스트(다른 사용자 덮어쓰기·삭제 거부, 가져오기 건너뜀과 소유자 지정, 이전 데이터 수정 가능, 보유 수량 검증), `AppTest`로 개발 모드 전체 흐름(보유 수량 저장 후 새 세션에서 자동 로드, 형식 오류, 보유 0 경고, 작성자 기록, 비교, 사용자 파일 생성)과 로그인 설정 시 로그인 화면만 표시, GitHub만 설정 시 차단 화면 확인. (시나리오 3은 같은 프로세스에서 `st.cache_resource` 재사용으로 오판정되어 별도 프로세스로 다시 확인.)
+- 사용자가 GitHub 토큰·Google OAuth 클라이언트·허용 이메일 2개·앱 주소(`quantportfolio-nk.streamlit.app`)를 제공해 설정 파일 생성: 로컬용 `.streamlit/secrets.toml`(redirect_uri=localhost)과 Cloud 붙여넣기용 `.streamlit/secrets.cloud.toml`(redirect_uri=앱 주소). 둘 다 `.gitignore`(`.streamlit/secrets*.toml`)로 커밋 제외됨을 `git check-ignore`/`git status`로 확인, TOML 파싱 확인, cookie_secret은 파일별로 새로 생성.
+- 토큰은 처음에 `github_pat_` 접두사가 빠진 채 전달되어 401이었고, 접두사를 붙이자 `quant_portfolio_data`(비공개, main 브랜치 있음, data 브랜치는 아직 없음)에 읽기 접근 성공. 읽기 전용으로만 확인했고 저장소에 쓰지 않음. 토큰 권한 범위(저장소 한 곳으로 제한됐는지)와 만료 설정은 API로 구분할 수 없어 미확인.
+- 실제 설정값으로 임시 복사본에서 앱 부팅 시 로그인 화면 정상 표시, Authlib 인식, 로그인 버튼 클릭 시 예외 없음(AppTest는 실제 OAuth 리디렉션을 수행하지 않음).
+- 남은 이슈: 실제 Google OAuth 로그인과 GitHub 종단 테스트는 하지 못함(Google 클라이언트·토큰 필요). 사용자가 설정 가이드대로 배포 후 4명이 로그인해 확인 필요. 탭1~3 시세 조회는 아직 캐시 미적용. 공개 이력의 보유 수량 정리 여부는 사용자 결정 대기.
+
 ## 2026-09-20
 
 ### 포트폴리오 저장/비교 기능 구현 + 다인 사용 방안 문서 (미커밋)

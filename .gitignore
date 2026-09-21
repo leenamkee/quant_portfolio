@@ -182,3 +182,7 @@ cython_debug/
 # 로컬 개발용 포트폴리오 저장 파일 (실제 데이터는 GitHub data 브랜치에 저장)
 data/portfolios.json
 data/portfolios.json.tmp
+data/users/
+
+# Streamlit 로컬 secrets (토큰/OAuth 비밀값, 절대 커밋 금지)
+.streamlit/secrets*.toml
