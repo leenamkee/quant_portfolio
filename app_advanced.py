@@ -16,7 +16,6 @@ st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 TICKER_NAMES = pe.TICKER_NAMES
 TARGET_WEIGHTS_PCT = {t: round(w * 100, 1) for t, w in pe.DEFAULT_TARGET_WEIGHTS.items()}
 DEFAULT_TICKERS = ", ".join(sorted(pe.DEFAULT_TARGET_WEIGHTS))
-DEFAULT_WEIGHTS_TEXT = "\n".join(f"{t}:{w:g}" for t, w in TARGET_WEIGHTS_PCT.items())
 
 
 @st.cache_resource
@@ -299,65 +298,79 @@ with tab3:
     st.header("리밸런싱 가이드")
     st.markdown("현재 보유 수량을 입력하고 목표 비중을 설정하면 리밸런싱 가이드를 제공합니다.")
     
-    if "holdings_initial" not in st.session_state:
+    def rb_name(ticker):
+        return TICKER_NAMES.get(ticker, "(미등록)")
+
+    if "rb_table" not in st.session_state:
         try:
             saved_holdings = ps.load_holdings(user_store)
         except ps.StoreError as e:
             saved_holdings = {}
             st.warning(f"저장된 보유 수량을 불러오지 못했습니다: {e}")
-        st.session_state["holdings_initial"] = (
-            "\n".join(f"{t}:{n}" for t, n in saved_holdings.items())
-            or "\n".join(f"{t}:0" for t in DEFAULT_TICKERS.split(", "))
-        )
+        initial_tickers = list(pe.DEFAULT_TARGET_WEIGHTS) + [t for t in saved_holdings if t not in pe.DEFAULT_TARGET_WEIGHTS]
+        st.session_state["rb_table"] = pd.DataFrame({
+            "티커": initial_tickers,
+            "종목명": [rb_name(t) for t in initial_tickers],
+            "현재 수량": [int(saved_holdings.get(t, 0)) for t in initial_tickers],
+            "목표 비중(%)": [float(TARGET_WEIGHTS_PCT.get(t, 0.0)) for t in initial_tickers],
+        })
+        st.session_state["rb_version"] = 0
 
-    col1, col2 = st.columns(2)
+    version = st.session_state["rb_version"]
+    st.subheader("현재 수량 · 목표 비중")
+    st.caption("표에서 현재 수량(주)과 목표 비중(%)을 직접 수정하세요. 현재 수량은 '내 보유 수량 저장'으로 저장하면 나만 볼 수 있고 다음 접속 때 자동으로 불러옵니다.")
+    edited = st.data_editor(
+        st.session_state["rb_table"],
+        key=f"rb_editor_{version}",
+        hide_index=True,
+        use_container_width=True,
+        disabled=["티커", "종목명"],
+        column_config={
+            "현재 수량": st.column_config.NumberColumn("현재 수량(주)", min_value=0, step=1, format="%d"),
+            "목표 비중(%)": st.column_config.NumberColumn("목표 비중(%)", min_value=0.0, max_value=100.0, step=0.5, format="%.1f"),
+        },
+    ).fillna(0)
 
-    with col1:
-        st.subheader("현재 보유 수량 (나만 볼 수 있음)")
-        holdings_input = st.text_area(
-            "현재 보유 수량 (형식: TICKER:SHARES, 한 줄에 하나씩)",
-            st.session_state["holdings_initial"],
-            key="holdings_input"
-        )
+    current_holdings = {row["티커"]: int(row["현재 수량"]) for _, row in edited.iterrows()}
+    target_weights = {row["티커"]: float(row["목표 비중(%)"]) / 100 for _, row in edited.iterrows()}
+    total_pct = edited["목표 비중(%)"].sum()
+    if total_pct == 0:
+        st.error("목표 비중 합계가 0%입니다. 목표 비중을 입력하세요.")
+    elif abs(total_pct - 100) > 0.05:
+        st.warning(f"목표 비중 합계가 {total_pct:.1f}%입니다. 리밸런싱 가이드는 합계가 100%가 되도록 비율에 맞춰 계산합니다.")
+    else:
+        st.caption(f"목표 비중 합계: {total_pct:.1f}%")
 
-        current_holdings = {}
-        holdings_valid = True
-        try:
-            for line in holdings_input.strip().split('\n'):
-                if line.strip():
-                    ticker, shares = line.split(':')
-                    current_holdings[ticker.strip()] = int(shares.strip())
-        except:
-            holdings_valid = False
-            st.error("입력 형식이 올바르지 않습니다. (예: 360750.KS:100)")
-
-        if st.button("내 보유 수량 저장", key="save_holdings_button"):
-            if not holdings_valid:
-                st.error("입력 형식을 먼저 바로잡으세요.")
+    add_col, remove_col = st.columns(2)
+    with add_col:
+        new_ticker = st.text_input("종목 추가 (티커 또는 6자리 종목코드)", key=f"rb_new_{version}", placeholder="예: 360750.KS 또는 360750")
+        if st.button("종목 추가", key="rb_add_button"):
+            ticker = new_ticker.strip().upper()
+            if len(ticker) == 6 and ticker.isdigit():
+                ticker += ".KS"
+            if not ticker:
+                st.error("추가할 티커를 입력하세요.")
+            elif ticker in edited["티커"].values:
+                st.warning(f"{ticker}은(는) 이미 표에 있습니다.")
             else:
-                try:
-                    ps.save_holdings(user_store, current_holdings)
-                    st.success("보유 수량을 저장했습니다. 다음에 접속하면 자동으로 불러옵니다.")
-                except ps.StoreError as e:
-                    st.error(f"저장 실패: {e}")
+                new_row = pd.DataFrame({"티커": [ticker], "종목명": [rb_name(ticker)], "현재 수량": [0], "목표 비중(%)": [0.0]})
+                st.session_state["rb_table"] = pd.concat([edited, new_row], ignore_index=True)
+                st.session_state["rb_version"] += 1
+                st.rerun()
+    with remove_col:
+        to_remove = st.multiselect("종목 제거", list(edited["티커"]), format_func=lambda t: f"{t} · {rb_name(t)}", key=f"rb_remove_{version}")
+        if st.button("선택 종목 제거", key="rb_remove_button") and to_remove:
+            st.session_state["rb_table"] = edited[~edited["티커"].isin(to_remove)].reset_index(drop=True)
+            st.session_state["rb_version"] += 1
+            st.rerun()
 
-    with col2:
-        st.subheader("목표 비중")
-        weights_input = st.text_area(
-            "목표 비중 (형식: TICKER:WEIGHT%, 한 줄에 하나씩)",
-            DEFAULT_WEIGHTS_TEXT,
-            key="weights_input"
-        )
-        
-        target_weights = {}
+    if st.button("내 보유 수량 저장", key="save_holdings_button"):
         try:
-            for line in weights_input.strip().split('\n'):
-                if line.strip():
-                    ticker, weight = line.split(':')
-                    target_weights[ticker.strip()] = float(weight.strip().rstrip('%')) / 100
-        except:
-            st.error("입력 형식이 올바르지 않습니다. (예: AAPL:50)")
-    
+            ps.save_holdings(user_store, current_holdings)
+            st.success("보유 수량을 저장했습니다. 다음에 접속하면 자동으로 불러옵니다.")
+        except ps.StoreError as e:
+            st.error(f"저장 실패: {e}")
+
     if st.button("리밸런싱 가이드 생성", key="rebalancing_button"):
         with st.spinner("리밸런싱 가이드를 생성 중입니다..."):
             try:
@@ -369,6 +382,8 @@ with tab3:
                     st.error("현재 주가를 가져오지 못했습니다.")
                 elif sum(current_holdings.values()) == 0:
                     st.warning("보유 수량이 모두 0입니다. 현재 보유 수량을 입력한 뒤 다시 생성하세요.")
+                elif sum(target_weights.values()) == 0:
+                    st.error("목표 비중 합계가 0%입니다. 목표 비중을 입력한 뒤 다시 생성하세요.")
                 else:
                     # 리밸런싱 가이드 생성
                     rebalancing_df, total_value, cash_needed = rg.calculate_rebalancing_guide(

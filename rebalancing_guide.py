@@ -48,7 +48,8 @@ def calculate_rebalancing_guide(current_holdings, target_weights, current_prices
     rebalancing_data = []
     total_cash_needed = 0
     
-    for ticker in set(list(current_holdings.keys()) + list(target_weights.keys())):
+    # set()은 순서가 매번 달라지므로, 입력한 순서를 유지하며 중복만 제거한다
+    for ticker in dict.fromkeys(list(current_holdings.keys()) + list(target_weights.keys())):
         current_shares = current_holdings.get(ticker, 0)
         current_price = current_prices.get(ticker, 0)
         current_value = current_values.get(ticker, 0)
