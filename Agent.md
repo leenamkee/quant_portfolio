@@ -33,7 +33,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
 | `rebalancing_guide.py` | 현재가 조회, 보유 수량 대비 매수/매도 수량 계산, 거래 비용 계산 |
 | `portfolio_store.py` | 영속화. `GitHubBackend`(GitHub Contents API, 별도 `data` 브랜치) / `LocalBackend`(로컬 파일, 개발용). 공용 포트폴리오(`data/portfolios.json`, 작성자 표시·작성자만 수정/삭제)와 사용자별 보유 수량(`users/<해시>.json`)을 다룬다 |
 | `auth.py` | Google 로그인(`st.login`) 판정. 허용 이메일(`ALLOWED_EMAILS`) 검사, 사용자 키(이메일 SHA-256 앞 12자리) 생성. 로그인 설정이 없고 GitHub 저장소만 설정되면 앱을 열지 않는다(fail-closed) |
-| `docs/` | `portfolio-storage-research.md`(저장 방식), `multi-user-plan.md`(3~4명 사용 방안), `google-login-setup.md`(로그인·저장소 설정 절차) |
+| `docs/` | `portfolio-storage-research.md`(저장 방식), `multi-user-plan.md`(3~4명 사용 방안), `google-login-setup.md`(로그인·저장소 설정 절차), `refactoring-plan.md`(코드 검토 결과와 단계별 리팩토링 계획, 실행 전), `refactoring-plan-review.md`(그 계획에 대한 검토 의견) |
 | `worklog.md` | 작업 기록 (아래 "작업 규칙" 참고) |
 | `*.md` (루트, 한글 파일명) | 초기 사용 가이드 문서 |
 
@@ -88,7 +88,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
 - 저장소 관련 secrets: `GITHUB_TOKEN`(데이터 저장소 한 곳에만 Contents 읽기/쓰기), `GITHUB_REPO`, 선택 `GITHUB_DATA_BRANCH`(기본 `data`). 없으면 로컬 파일로 대체되고 탭4에 경고가 뜬다.
 - 로그인 secrets: `[auth]`(redirect_uri, cookie_secret, client_id, client_secret, server_metadata_url)와 최상위 `ALLOWED_EMAILS`. 최상위 키는 `[auth]` 테이블보다 앞에 둔다. 설정 절차는 `docs/google-login-setup.md`. `st.login`에는 Authlib가 필요해 `requirements.txt`가 `streamlit[auth]`를 쓴다.
 - 로그인 판정 규칙(`auth.resolve_identity`)을 바꿀 때는 fail-closed(설정이 불완전하면 열지 않음)를 유지한다. `st.cache_resource`로 만든 저장소 객체는 프로세스 안에서 재사용되므로, 테스트에서 secrets를 바꿔가며 시나리오를 돌릴 때는 시나리오마다 새 프로세스로 실행한다.
-- 다른 모듈에 새 상수/함수를 추가하고 앱에서 참조하는 변경을 푸시하면, 실행 중인 Cloud 프로세스가 옛 모듈을 캐시하고 있어 `AttributeError`가 날 수 있다. 이 경우 코드 문제가 아니므로 Manage app → Reboot app을 먼저 시도한다 (2026-09-20 `pe.TICKER_NAMES` 사례).
+- 다른 모듈에 새 상수/함수를 추가하고 앱에서 참조하는 변경을 푸시한 뒤 `AttributeError`가 난 적이 있다(2026-09-20 `pe.TICKER_NAMES`). 커밋된 파일에는 해당 상수가 있었고 Manage app → Reboot app으로 해소되었다. 원인(실행 중인 프로세스의 옛 모듈 캐시)은 **추정이며 확정하지 못했다.** 같은 증상이면 Reboot을 복구 절차로 먼저 시도하되, 원인을 단정하지 않는다.
 - 비밀 값(토큰 등)은 `st.secrets`(Cloud의 App settings → Secrets)로만 다루고 저장소에 커밋하지 않는다.
 
 ## 작업 규칙
