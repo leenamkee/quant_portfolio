@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from errors import ValidationError
 import rebalance_engine as engine
 
 
@@ -105,37 +106,61 @@ def test_alignment_does_not_depend_on_pandas_fill_default(gap_prices):
     assert list(history.index) == list(explicit.index)
 
 
-# ---------- 경계값·실패 경로 (A8): 수정 후 기대 동작을 명세로 남기고 단계 1까지 known-failure ----------
+# ---------- 입력 검증 (A8, 단계 1) ----------
 
-@pytest.mark.xfail(reason="A8: 비중 합계 0이 NaN 결과를 조용히 만든다 (단계 1)")
+def small_prices():
+    return make_prices({"A": [100, 101, 102], "B": [50, 51, 52]})
+
+
 def test_zero_weight_sum_is_rejected():
-    data = make_prices({"A": [100, 101, 102], "B": [50, 51, 52]})
-    with pytest.raises(ValueError):
-        engine.backtest_rebalancing(data, {"A": 0, "B": 0}, "M", 1000)
+    with pytest.raises(ValidationError, match="합계가 0"):
+        engine.backtest_rebalancing(small_prices(), {"A": 0, "B": 0}, "M", 1000)
 
 
-@pytest.mark.xfail(reason="A8: 음수 비중(공매도)이 조용히 계산된다 (단계 1)")
 def test_negative_weight_is_rejected():
-    data = make_prices({"A": [100, 101, 102], "B": [50, 51, 52]})
-    with pytest.raises(ValueError):
-        engine.backtest_rebalancing(data, {"A": 1.5, "B": -0.5}, None, 1000)
+    with pytest.raises(ValidationError, match="음수"):
+        engine.backtest_rebalancing(small_prices(), {"A": 1.5, "B": -0.5}, None, 1000)
 
 
-@pytest.mark.xfail(reason="A8: 비수치(NaN) 비중이 조용히 NaN 결과를 만든다 (단계 1)")
 def test_nan_weight_is_rejected():
-    data = make_prices({"A": [100, 101, 102], "B": [50, 51, 52]})
-    with pytest.raises(ValueError):
-        engine.backtest_rebalancing(data, {"A": float("nan"), "B": 1.0}, None, 1000)
+    with pytest.raises(ValidationError, match="숫자가 아닙니다"):
+        engine.backtest_rebalancing(small_prices(), {"A": float("nan"), "B": 1.0}, None, 1000)
 
 
-@pytest.mark.xfail(reason="A8: 빈 데이터가 원인을 알 수 없는 AttributeError로 실패한다 (단계 1)")
 def test_empty_price_data_is_rejected_with_clear_error():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError, match="비어"):
         engine.backtest_rebalancing(pd.DataFrame(), {}, "M", 1000)
 
 
-@pytest.mark.xfail(reason="A8: 단일 거래일 데이터가 KeyError('Date')로 실패한다 (단계 1)")
 def test_single_trading_day_is_rejected_with_clear_error():
-    data = make_prices({"A": [100.0]})
-    with pytest.raises(ValueError):
-        engine.backtest_rebalancing(data, {"A": 1.0}, None, 1000)
+    with pytest.raises(ValidationError, match="거래일이 부족"):
+        engine.backtest_rebalancing(make_prices({"A": [100.0]}), {"A": 1.0}, None, 1000)
+
+
+def test_ticker_without_a_weight_is_rejected_by_name():
+    with pytest.raises(ValidationError, match="B"):
+        engine.backtest_rebalancing(small_prices(), {"A": 1.0}, None, 1000)
+
+
+def test_extra_weights_for_tickers_not_in_data_are_ignored():
+    history = engine.backtest_rebalancing(small_prices(), {"A": 0.5, "B": 0.5, "ZZZ": 0.5}, None, 1000)
+    assert len(history) == 2
+
+
+@pytest.mark.parametrize("capital", [0, -100, float("nan")])
+def test_non_positive_initial_capital_is_rejected(capital):
+    with pytest.raises(ValidationError, match="초기 자본"):
+        engine.backtest_rebalancing(small_prices(), {"A": 0.5, "B": 0.5}, None, capital)
+
+
+def test_unknown_rebalance_frequency_is_rejected():
+    with pytest.raises(ValidationError, match="리밸런싱 주기"):
+        engine.backtest_rebalancing(small_prices(), {"A": 0.5, "B": 0.5}, "W", 1000)
+
+
+def test_metrics_need_at_least_two_days_of_values():
+    one_day = pd.DataFrame({"Portfolio Value": [100.0]}, index=pd.bdate_range("2024-01-01", periods=1))
+    with pytest.raises(ValidationError, match="최소 2일"):
+        engine.calculate_metrics(one_day)
+    with pytest.raises(ValidationError):
+        engine.calculate_metrics(None)

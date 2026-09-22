@@ -192,3 +192,58 @@ def test_tab4_delete_removes_only_selected(run_app):
     at.multiselect(key="delete_selected").set_value([first]).run()
     at.button(key="delete_button").click().run()
     assert [p["name"] for p in at.session_state["saved_portfolios"]] == ["안B"]
+
+
+# ---------- 입력 검증·실패 처리 (단계 1) ----------
+
+def test_tab3_blocks_guide_and_names_the_ticker_when_a_price_is_missing(run_app, krx_prices, monkeypatch):
+    import yfinance
+    from fakes import make_download
+    monkeypatch.setattr(yfinance, "download", make_download(krx_prices.drop(columns=["411060.KS"])))
+    at = run_app()
+    table = at.session_state["rb_table"].copy()
+    for ticker in ("360750.KS", "411060.KS"):
+        table.loc[table["티커"] == ticker, "현재 수량"] = 10
+    at.session_state["rb_table"] = table
+    at.run()
+    at.button(key="rebalancing_button").click().run()
+    assert errors(at) == []
+    assert any("411060.KS" in e.value for e in at.error)
+    assert not [d for d in at.dataframe if "Ticker" in d.value.columns]  # 잘못된 매매 안내표가 만들어지지 않는다
+
+
+def test_tab3_shows_the_price_basis_date(run_app):
+    at = run_app()
+    table = at.session_state["rb_table"].copy()
+    table.loc[table["티커"] == "360750.KS", "현재 수량"] = 100
+    at.session_state["rb_table"] = table
+    at.run()
+    at.button(key="rebalancing_button").click().run()
+    assert any(c.value.startswith("가격 기준: 마지막 거래일 종가") for c in at.caption)
+
+
+def test_tab1_reports_a_ticker_without_price_data(run_app):
+    at = run_app()
+    at.sidebar.text_input(key="tab1_tickers").set_value("273130.KS, NOPE.KS").run()
+    at.sidebar.button(key="tab1_button").click().run()
+    assert errors(at) == []
+    assert any("NOPE.KS" in e.value for e in at.error)
+
+
+def test_tab2_reports_start_after_end_with_a_clear_message(run_app):
+    import datetime as dt
+    at = run_app()
+    at.date_input(key="custom_start").set_value(dt.date(2026, 6, 1))
+    at.date_input(key="custom_end").set_value(dt.date(2026, 1, 1))
+    at.run()
+    at.button(key="custom_button").click().run()
+    assert errors(at) == []
+    assert any("시작일" in e.value and "종료일" in e.value for e in at.error)
+
+
+def test_unexpected_errors_are_labeled_differently_from_input_errors(run_app, monkeypatch):
+    import custom_backtest  # 앱이 실제로 호출하는 이름(cb.get_stock_data)을 패치한다
+    at = run_app()
+    monkeypatch.setattr(custom_backtest, "get_stock_data", lambda *a, **k: (_ for _ in ()).throw(KeyError("boom")))
+    at.button(key="custom_button").click().run()
+    assert any("예상하지 못한 오류" in e.value for e in at.error)

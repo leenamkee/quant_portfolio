@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 import rebalancing_guide as guide
+from errors import MarketDataError, ValidationError
 from fakes import make_download
 
 
@@ -58,49 +59,105 @@ def test_rebalancing_cost_is_half_of_traded_value_times_rate():
     assert cost == pytest.approx(0.5)  # (500 + 500) / 2 * 0.1%
 
 
-# ---------- 경계값·실패 경로: 수정 후 기대 동작 (A5, A8) ----------
+# ---------- 입력·가격 검증 (A5, A8, 단계 1) ----------
 
-@pytest.mark.xfail(reason="A5: 보유 종목의 가격이 없으면 0원으로 계산해 다른 종목을 잘못 매도하라고 안내한다 (단계 1)")
-def test_missing_price_for_held_ticker_is_an_error():
-    with pytest.raises(ValueError, match="TICKB"):
+def test_missing_price_for_held_ticker_is_an_error_naming_the_ticker():
+    with pytest.raises(ValidationError, match="TICKB"):
         guide.calculate_rebalancing_guide({"TICKA": 10, "TICKB": 10}, {"TICKA": 0.5, "TICKB": 0.5}, {"TICKA": 100})
 
 
-@pytest.mark.xfail(reason="A5: 가격 0이 조용히 0주 안내를 만든다 (단계 1)")
-def test_zero_price_for_held_ticker_is_an_error():
-    with pytest.raises(ValueError, match="TICKB"):
-        guide.calculate_rebalancing_guide({"TICKA": 10, "TICKB": 10}, {"TICKA": 0.5, "TICKB": 0.5}, {"TICKA": 100, "TICKB": 0})
+def test_missing_price_never_produces_a_wrong_sell_advice():
+    # 예전에는 B를 0원으로 계산해 A를 5주 매도하라고 안내했다
+    with pytest.raises(ValidationError):
+        guide.calculate_rebalancing_guide({"A": 10, "B": 10}, {"A": 0.5, "B": 0.5}, {"A": 100})
 
 
-@pytest.mark.xfail(reason="A5: NaN 가격이 티커를 알 수 없는 오류가 된다 (단계 1)")
-def test_nan_price_error_names_the_ticker():
-    with pytest.raises(ValueError, match="TICKB"):
-        guide.calculate_rebalancing_guide({"TICKA": 10, "TICKB": 10}, {"TICKA": 0.5, "TICKB": 0.5}, {"TICKA": 100, "TICKB": float("nan")})
+@pytest.mark.parametrize("price", [0, -5, float("nan"), None, "100"])
+def test_invalid_price_for_held_ticker_is_an_error(price):
+    with pytest.raises(ValidationError, match="TICKB"):
+        guide.calculate_rebalancing_guide({"TICKA": 10, "TICKB": 10}, {"TICKA": 0.5, "TICKB": 0.5}, {"TICKA": 100, "TICKB": price})
 
 
-@pytest.mark.xfail(reason="A8: 목표 비중 합계 0이 ZeroDivisionError가 된다 (단계 1)")
+def test_price_is_required_for_a_target_ticker_even_without_holdings():
+    with pytest.raises(ValidationError, match="TICKB"):
+        guide.calculate_rebalancing_guide({"TICKA": 10}, {"TICKA": 0.5, "TICKB": 0.5}, {"TICKA": 100})
+
+
+def test_ticker_with_no_holding_and_no_target_does_not_need_a_price():
+    df, _, _ = guide.calculate_rebalancing_guide({"A": 10, "Z": 0}, {"A": 1.0, "Z": 0.0}, {"A": 100})
+    assert trades(df) == {"A": 0, "Z": 0}
+
+
 def test_zero_target_weight_sum_is_rejected_with_clear_error():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError, match="목표 비중 합계가 0"):
         guide.calculate_rebalancing_guide({"A": 10}, {"A": 0}, {"A": 100})
 
 
-# ---------- 현재가 조회 ----------
+def test_negative_holdings_and_weights_are_rejected():
+    with pytest.raises(ValidationError, match="보유 수량"):
+        guide.calculate_rebalancing_guide({"A": -1}, {"A": 1.0}, {"A": 100})
+    with pytest.raises(ValidationError, match="음수"):
+        guide.calculate_rebalancing_guide({"A": 1}, {"A": 1.5, "B": -0.5}, {"A": 100, "B": 100})
+
+
+def test_cost_calculation_applies_the_same_validation():
+    with pytest.raises(ValidationError, match="TICKB"):
+        guide.calculate_rebalancing_cost({"TICKA": 10, "TICKB": 10}, {"TICKA": 0.5, "TICKB": 0.5}, {"TICKA": 100})
+
+
+# ---------- 현재가 조회 (마지막 사용 가능한 거래일 종가, §9-2 확정) ----------
 
 def _close_frame():
     idx = pd.bdate_range("2024-01-01", periods=5)
     return pd.DataFrame({"A": [1.0, 2, 3, 4, 5], "B": [10.0, 20, 30, 40, np.nan]}, index=idx)
 
 
-@pytest.mark.xfail(reason="§9-2 확정: 가격 기준은 '마지막 사용 가능한 거래일 종가'다. 현재는 끝에서 두 번째 행을 쓴다 (단계 1)")
 def test_current_prices_use_last_available_close(monkeypatch):
     monkeypatch.setattr(guide.yf, "download", make_download(_close_frame()))
     assert guide.get_current_prices(["A", "B"]) == {"A": 5.0, "B": 40.0}
 
 
-@pytest.mark.xfail(reason="A5: 조회 실패를 print 후 빈 dict로 숨긴다 (단계 1)")
+def test_latest_prices_report_the_as_of_date_per_ticker(monkeypatch):
+    monkeypatch.setattr(guide.yf, "download", make_download(_close_frame()))
+    latest = guide.fetch_latest_prices(["A", "B"])
+    assert latest.as_of["A"] == pd.Timestamp("2024-01-05") and latest.as_of["B"] == pd.Timestamp("2024-01-04")
+    assert latest.distinct_dates() == [pd.Timestamp("2024-01-04").date(), pd.Timestamp("2024-01-05").date()]
+
+
+def test_tickers_without_valid_prices_are_reported_as_missing(monkeypatch):
+    frame = _close_frame()
+    frame["C"] = 0.0  # 0 이하 가격은 유효하지 않음
+    monkeypatch.setattr(guide.yf, "download", make_download(frame))
+    latest = guide.fetch_latest_prices(["A", "C", "NOPE"])
+    assert latest.prices == {"A": 5.0} and latest.missing == ["C", "NOPE"]
+
+
 def test_price_lookup_failure_is_not_hidden(monkeypatch):
     def broken(*args, **kwargs):
         raise RuntimeError("network down")
     monkeypatch.setattr(guide.yf, "download", broken)
-    with pytest.raises(Exception):
+    with pytest.raises(MarketDataError, match="network down"):
         guide.get_current_prices(["A"])
+
+
+def test_empty_price_result_is_an_error(monkeypatch):
+    monkeypatch.setattr(guide.yf, "download", lambda *a, **k: pd.concat({"Close": pd.DataFrame()}, axis=1))
+    with pytest.raises(MarketDataError, match="비어"):
+        guide.fetch_latest_prices(["A"])
+
+
+def test_no_price_for_any_ticker_is_an_error(monkeypatch):
+    monkeypatch.setattr(guide.yf, "download", make_download(_close_frame()))
+    with pytest.raises(MarketDataError, match="NOPE"):
+        guide.get_current_prices(["NOPE"])
+
+
+def test_no_tickers_is_a_validation_error():
+    with pytest.raises(ValidationError):
+        guide.fetch_latest_prices([" ", ""])
+
+
+def test_single_ticker_series_result_is_supported(monkeypatch):
+    series = pd.Series([1.0, 2.0], index=pd.bdate_range("2024-01-01", periods=2), name="Close")
+    monkeypatch.setattr(guide.yf, "download", lambda *a, **k: {"Close": series})
+    assert guide.get_current_prices(["A"]) == {"A": 2.0}

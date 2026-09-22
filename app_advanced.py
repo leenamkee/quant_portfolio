@@ -1,7 +1,6 @@
 import json
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import portfolio_engine as pe
@@ -10,6 +9,7 @@ import custom_backtest as cb
 import rebalancing_guide as rg
 import portfolio_store as ps
 import auth
+from errors import MarketDataError, ValidationError
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 
@@ -65,6 +65,16 @@ def refresh_saved_portfolios():
     except ps.StoreError as e:
         st.session_state.setdefault("saved_portfolios", [])
         st.session_state["store_error"] = str(e)
+
+
+def show_error(error):
+    """오류 종류에 따라 사용자에게 원인이 드러나는 메시지를 보여준다."""
+    if isinstance(error, ValidationError):
+        st.error(str(error))
+    elif isinstance(error, MarketDataError):
+        st.error(f"시세를 가져오지 못했습니다: {error}")
+    else:
+        st.error(f"예상하지 못한 오류가 발생했습니다: {error}")
 
 
 def ticker_name(ticker):
@@ -202,7 +212,7 @@ with tab1:
                         st.plotly_chart(fig_corr, use_container_width=True)
                         
             except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+                show_error(e)
     else:
         st.info("왼쪽 사이드바에서 설정을 완료하고 '분석 실행' 버튼을 눌러주세요.")
 
@@ -379,7 +389,7 @@ with tab2:
                         st.plotly_chart(fig_corr, use_container_width=True)
                         
             except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+                show_error(e)
     else:
         st.info("포트폴리오 설정을 완료하고 '백테스트 실행' 버튼을 눌러주세요.")
 
@@ -446,11 +456,12 @@ with tab3:
         with st.spinner("리밸런싱 가이드를 생성 중입니다..."):
             try:
                 # 현재 주가 가져오기
-                tickers_for_prices = list(set(list(current_holdings.keys()) + list(target_weights.keys())))
-                current_prices = rg.get_current_prices(tickers_for_prices)
+                tickers_for_prices = list(dict.fromkeys(list(current_holdings) + list(target_weights)))
+                latest = rg.fetch_latest_prices(tickers_for_prices)
+                current_prices = latest.prices
                 
                 if not current_prices:
-                    st.error("현재 주가를 가져오지 못했습니다.")
+                    st.error(f"현재가를 얻지 못했습니다: {', '.join(latest.missing)}")
                 elif sum(current_holdings.values()) == 0:
                     st.warning("보유 수량이 모두 0입니다. 현재 보유 수량을 입력한 뒤 다시 생성하세요.")
                 elif sum(target_weights.values()) == 0:
@@ -473,6 +484,13 @@ with tab3:
                     col3.metric("예상 거래 비용", f"{transaction_cost:,.0f}원")
                     col4.metric("순 현금 필요", f"{max(0, cash_needed) + transaction_cost:,.0f}원")
                     
+                    price_dates = latest.distinct_dates()
+                    st.caption("가격 기준: 마지막 거래일 종가 (" + ", ".join(str(d) for d in price_dates) + ")")
+                    if len(price_dates) > 1:
+                        st.warning("종목마다 가격 기준일이 다릅니다: " + ", ".join(f"{t} {d.date()}" for t, d in latest.as_of.items()))
+                    if latest.missing:
+                        st.warning(f"현재가를 받지 못한 종목(보유·목표 비중이 없어 계산에는 영향 없음): {', '.join(latest.missing)}")
+
                     rebalancing_df.insert(1, '종목명', rebalancing_df['Ticker'].map(TICKER_NAMES).fillna(rebalancing_df['Ticker']))
 
                     st.subheader("리밸런싱 액션 테이블")
@@ -495,7 +513,7 @@ with tab3:
                             st.dataframe(sell_actions[['Ticker', '종목명', 'Shares to Buy/Sell', 'Current Price']], use_container_width=True)
                     
             except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+                show_error(e)
     else:
         st.info("현재 보유 수량과 목표 비중을 입력하고 '리밸런싱 가이드 생성' 버튼을 눌러주세요.")
 
@@ -582,7 +600,7 @@ with tab4:
                             st.plotly_chart(fig, use_container_width=True)
                             st.caption("종목별 상장일이 달라 포트폴리오마다 실제 비교 기간이 다를 수 있습니다(위 '기간' 열 참고).")
                     except Exception as e:
-                        st.error(f"오류가 발생했습니다: {e}")
+                        show_error(e)
 
         with st.expander("삭제 (내가 만든 포트폴리오만)"):
             to_delete = st.multiselect("삭제할 포트폴리오", list(mine), format_func=mine.get, key="delete_selected")

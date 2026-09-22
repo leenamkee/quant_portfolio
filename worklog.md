@@ -4,6 +4,19 @@
 
 ## 2026-09-22
 
+### 리팩토링 단계 1: 입력 검증과 실패 은닉 제거 (동작 변경)
+- 단계 0의 CI가 Linux/Python 3.11/고정 버전에서 **통과**함을 확인(`d48787b`, `ecos` 빌드와 yank된 numpy 설치도 문제없음)한 뒤 단계 1을 수행.
+- 신규: `errors.py`(`ValidationError`, `MarketDataError`), `validation.py`(비중·보유 수량·자본·주기·가격표·날짜 검사, `extract_close`).
+- `rebalance_engine`: 주기·자본·가격표·비중을 엔진 입구에서 검사(비중 없는 종목, 합계 0, 음수, NaN, 빈 데이터, 거래일 부족), 성과 지표는 최소 2일치 필요. 정상 입력의 계산은 그대로.
+- `portfolio_engine.get_stock_data`: 티커 공백·빈 값·중복 정리, 날짜 검증, **종료일을 하루 더해 요청(종료일 포함)**, 조회 실패/빈 결과/전부 결측 종목은 `MarketDataError`(종목명 포함). 실제 Yahoo(yfinance 1.0)로 종료일(오늘)이 포함됨을 확인.
+- `rebalancing_guide`: 가격 기준을 **마지막 사용 가능한 거래일 종가**로 변경하고 기준일을 반환(`fetch_latest_prices`), 조회 실패는 예외, 보유·목표 종목의 가격이 없거나 0/NaN이면 계산 거부(이전: 0원으로 계산해 다른 종목 오매도 안내). 죽은 코드(`get_rebalancing_summary`, `__main__`) 삭제.
+- `custom_backtest`: 통째로 정리(중복 `get_stock_data`·죽은 `get_current_prices`·`__main__` 삭제). 비중이 있는 종목의 가격을 받지 못했으면 **조용히 제외하지 않고 오류**(같은 유형의 조용한 실패라 함께 수정).
+- `app_advanced`: 오류 종류별 `show_error()`(입력 오류/시세 조회 오류/예상하지 못한 오류), 탭3에 "가격 기준: 마지막 거래일 종가 (날짜)" 표시와 기준일 불일치·누락 경고, 미사용 `go` import 삭제.
+- 테스트: 기대 실패였던 12건(A5, A8, custom_backtest)을 통과 테스트로 전환하고 검증·시세·앱 오류 처리 테스트 추가 → **181개 통과 + 6개 기대 실패**(A1, A2, A3, E2 2건, E6: 후속 단계 대상).
+- **테스트가 잡은 제 결함 2건**: `validate_dates`가 `None` 날짜에서 `NaT` 때문에 `AttributeError`, Yahoo 빈 결과에서 `KeyError('Close')`가 알아보기 어려운 메시지. 둘 다 수정. 테스트 하나는 패치 대상 착오(`cb.get_stock_data`는 import 시점에 바인딩됨)로 테스트를 고침.
+- 릴리스 노트 신설(`docs/release-notes.md`): 가격 기준·종료일 포함으로 화면 숫자가 바뀜, 조용한 오류가 명시적 오류로 바뀐 목록.
+- 남은 일: 푸시 후 CI 확인, 단계 2(설정·데이터 계약)로 진행.
+
 ### 리팩토링 단계 0: 테스트 안전망 (pytest + CI)
 - 지시("푸시하고 단계 0부터 순서대로 진행")에 따라 먼저 계획서 문서를 푸시(`00dbdd8`)한 뒤 단계 0을 수행.
 - **배포와 같은 고정 버전으로 검증 환경 구성**(이전 검증의 약점 F5 해소): 로컬 Windows + Python 3.13에서는 `ecos==2.0.14`가 빌드되지 않아 그 항목만 제외하고 `pip install --no-deps`로 설치, `authlib` 추가. 결과 pandas 2.3.3 / numpy 2.4.0 / streamlit 1.52.2 / yfinance 1.0 / plotly 5.24.1. `ecos` 없이도 `max_sharpe` 최적화가 동작함을 확인.

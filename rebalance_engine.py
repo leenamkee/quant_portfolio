@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 
+from errors import ValidationError
+from validation import validate_capital, validate_frequency, validate_prices_frame, validate_weights
+
 def get_rebalance_dates(index, rebalance_freq):
     """
     각 기간(월/분기/연)의 마지막 실제 거래일을 반환합니다.
@@ -15,10 +18,21 @@ def backtest_rebalancing(data, initial_weights, rebalance_freq='M', initial_capi
     """
     리밸런싱을 포함한 백테스트를 수행합니다.
     rebalance_freq: 'M' (월간), 'Q' (분기), 'Y' (연간), None (리밸런싱 없음)
+    입력이 올바르지 않으면 ValidationError를 발생시킵니다.
     """
+    validate_frequency(rebalance_freq)
+    validate_capital(initial_capital)
+    validate_prices_frame(data)
+    missing = [str(t) for t in data.columns if t not in initial_weights]
+    if missing:
+        raise ValidationError(f"비중이 지정되지 않은 종목이 있습니다: {', '.join(missing)}")
+    weights = validate_weights({t: initial_weights[t] for t in data.columns})
+
     returns = data.pct_change().dropna()
-    portfolio_value = initial_capital
-    current_weights = np.array([initial_weights[ticker] for ticker in data.columns])
+    if returns.empty:
+        raise ValidationError("수익률을 계산할 수 있는 거래일이 부족합니다. 종목들의 가격이 겹치는 거래일이 최소 2일 필요합니다.")
+
+    current_weights = np.array([weights[ticker] for ticker in data.columns])
     # 비중 합이 1이 아니면 리밸런싱할 때마다 자산이 줄거나 늘어나므로 정규화한다
     current_weights = current_weights / current_weights.sum()
 
@@ -55,6 +69,8 @@ def calculate_metrics(history_df):
     """
     포트폴리오 성과 지표를 계산합니다.
     """
+    if history_df is None or len(history_df) < 2:
+        raise ValidationError("성과 지표를 계산하려면 포트폴리오 가치가 최소 2일치 필요합니다(가격 데이터 최소 3거래일).")
     df = history_df.copy()
     df['Daily Return'] = df['Portfolio Value'].pct_change()
     

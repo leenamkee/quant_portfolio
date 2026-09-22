@@ -34,6 +34,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
 | `custom_backtest.py` | 사용자 정의 비중 백테스트. 누락 티커 제거·정규화 후 `rebalance_engine.backtest_rebalancing`에 위임 |
 | `rebalancing_guide.py` | 현재가 조회, 보유 수량 대비 매수/매도 수량 계산, 거래 비용 계산 |
 | `portfolio_store.py` | 영속화. `GitHubBackend`(GitHub Contents API, 별도 `data` 브랜치) / `LocalBackend`(로컬 파일, 개발용). 공용 포트폴리오(`data/portfolios.json`, 작성자 표시·작성자만 수정/삭제)와 사용자별 보유 수량(`users/<해시>.json`)을 다룬다 |
+| `errors.py` / `validation.py` | 오류 계약과 입력 검증. `ValidationError`(입력·데이터 오류, 메시지를 그대로 화면에 표시), `MarketDataError`(시세 조회 실패). 엔진·가이드·시세 조회는 조용히 넘어가지 않고 이 예외를 던진다 |
 | `auth.py` | Google 로그인(`st.login`) 판정. 허용 이메일(`ALLOWED_EMAILS`) 검사, 사용자 키(이메일 SHA-256 앞 12자리) 생성. 로그인 설정이 없고 GitHub 저장소만 설정되면 앱을 열지 않는다(fail-closed) |
 | `tests/` | pytest 테스트(엔진·가이드·저장소·인증·앱 스모크), `fakes.py`(가짜 Yahoo·GitHub), `conftest.py`(합성 시세, 격리된 앱 실행 fixture) |
 | `docs/` | `portfolio-storage-research.md`(저장 방식), `multi-user-plan.md`(3~4명 사용 방안), `google-login-setup.md`(로그인·저장소 설정 절차), `refactoring-plan.md`(코드 검토 결과와 단계별 리팩토링 계획, 실행 전), `refactoring-plan-review.md`(그 계획에 대한 검토 의견) |
@@ -80,7 +81,10 @@ streamlit run app.py            # 초기 단일 페이지 버전
 - `AppTest`의 `selectbox.select()`는 선택지가 바뀐 뒤 옛 포맷 함수를 참조해 실패할 수 있다. 위젯 키에 선택값을 직접 대입한 뒤 `run()`하는 방식으로 검증한다.
 - `app_advanced.py`에서 `re`는 `rebalance_engine`의 별칭이다. 정규식 모듈을 `re`로 import하지 않는다(문자열 검사는 `str` 메서드를 쓴다).
 - 탭3 매수/매도 분류는 `Shares to Buy/Sell`의 숫자 부호(>0, <0)로 판단한다. 문자열 비교를 쓰지 않는다.
-- `rebalancing_guide.get_current_prices`는 최신일이 아니라 직전 거래일(`iloc[-2]`) 종가를 사용한다.
+- **가격 기준은 "마지막 사용 가능한 거래일 종가"**다(`rebalancing_guide.fetch_latest_prices`, 기준일 반환). 직전 종가를 쓰지 않는다. 보유·목표 종목의 가격이 없거나 0/NaN이면 계산하지 않고 `ValidationError`를 던진다(0원으로 계산하면 다른 종목을 잘못 매도하라고 안내하게 된다).
+- **종료일은 결과에 포함**된다: `portfolio_engine.get_stock_data`가 yfinance의 배타적 종료일에 맞춰 하루를 더해 요청한다. 시세는 이 함수(또는 `custom_backtest.get_stock_data`, 같은 함수)로만 받는다.
+- 새 계산 코드는 입력을 `validation.py`로 검사하고 `ValidationError`/`MarketDataError`를 던진다. 앱은 `show_error()`로 종류별로 보여준다. 넓은 `except Exception`으로 삼키거나 빈 값으로 대체하지 않는다.
+- 사용자에게 보이는 숫자·동작을 바꾸는 변경은 `docs/release-notes.md`에 전후 예시와 함께 기록한다.
 - `pypfopt`의 max_sharpe는 과거 평균 수익률에 민감해 특정 종목에 쏠린 비중을 낸다. 결과를 그대로 신뢰하지 말고 참고용으로 다룬다.
 
 ## 배포 (Streamlit Community Cloud)

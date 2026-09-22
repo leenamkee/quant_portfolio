@@ -5,11 +5,16 @@ import json
 import pandas as pd
 
 
-def make_download(source):
-    """`yfinance.download`를 대신한다. source(DataFrame)에서 요청한 티커의 열을 'Close' 아래에 돌려준다."""
+def make_download(source, calls=None):
+    """
+    `yfinance.download`를 대신한다. source(DataFrame)에서 요청한 티커의 열을 'Close' 아래에 돌려준다.
+    source에 없는 티커는 실제 yfinance처럼 전부 결측인 열이 된다. calls를 주면 요청 인자를 기록한다.
+    """
     def fake_download(tickers, *args, **kwargs):
         cols = [tickers] if isinstance(tickers, str) else list(tickers)
-        return pd.concat({"Close": source[cols]}, axis=1)
+        if calls is not None:
+            calls.append({"tickers": cols, **kwargs})
+        return pd.concat({"Close": source.reindex(columns=cols)}, axis=1)
     return fake_download
 
 
