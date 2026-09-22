@@ -46,5 +46,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install "pandas>=3,<4" numpy pytest requests yfinance PyPortfolioOpt
 
-      - name: Test (Streamlit 앱 스모크 제외: 고정 Streamlit이 pandas<3을 요구)
+      - name: "Test (Streamlit 앱 스모크 제외: 고정 Streamlit이 pandas<3을 요구)"
         run: python -m pytest --ignore=tests/test_app_smoke.py
