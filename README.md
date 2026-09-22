@@ -66,7 +66,7 @@ python -m pytest
 ├── rebalance_engine.py   # 리밸런싱 백테스트, 성과 지표
 ├── custom_backtest.py    # 사용자 정의 비중 백테스트
 ├── rebalancing_guide.py  # 보유 수량 기반 매수/매도 가이드, 거래 비용
-├── portfolio_store.py    # 포트폴리오·보유 수량 영속화 (GitHub JSON / 로컬 파일)
+├── storage/              # 포트폴리오·보유 수량 영속화 패키지 (schema/backends/repository, GitHub JSON 또는 로컬 파일)
 ├── auth.py               # Google 로그인 판정, 허용 이메일
 ├── tests/                # pytest 테스트 (합성 시세, 가짜 GitHub/Yahoo)
 ├── docs/                 # 리서치/설계 문서

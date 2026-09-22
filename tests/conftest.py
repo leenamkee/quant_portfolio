@@ -9,8 +9,9 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_FILES = [
     "app_advanced.py", "alignment.py", "auth.py", "config.py", "custom_backtest.py", "errors.py", "market_data.py",
-    "portfolio_engine.py", "portfolio_store.py", "rebalance_engine.py", "rebalancing_guide.py", "validation.py",
+    "portfolio_engine.py", "rebalance_engine.py", "rebalancing_guide.py", "validation.py",
 ]
+APP_PACKAGES = ["storage"]
 APP_MODULES = [f[:-3] for f in APP_FILES]
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))
@@ -73,15 +74,21 @@ def app_env(tmp_path, monkeypatch):
     import streamlit as st
     for name in APP_FILES:
         shutil.copy(os.path.join(ROOT, name), tmp_path / name)
+    for pkg in APP_PACKAGES:
+        shutil.copytree(os.path.join(ROOT, pkg), tmp_path / pkg)
     monkeypatch.syspath_prepend(str(tmp_path))
     monkeypatch.chdir(tmp_path)
-    for m in APP_MODULES:
-        sys.modules.pop(m, None)
+
+    def _drop_modules():
+        for m in list(sys.modules):
+            if m in APP_MODULES or any(m == pkg or m.startswith(pkg + ".") for pkg in APP_PACKAGES):
+                del sys.modules[m]
+
+    _drop_modules()
     st.cache_resource.clear()
     st.cache_data.clear()
     yield tmp_path
-    for m in APP_MODULES:
-        sys.modules.pop(m, None)
+    _drop_modules()
     st.cache_resource.clear()
     st.cache_data.clear()
 

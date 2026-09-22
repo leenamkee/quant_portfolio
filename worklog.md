@@ -4,6 +4,17 @@
 
 ## 2026-09-22
 
+### 리팩토링 단계 4: 저장소 안정화 (4a 읽기 검증·스키마 버전·브랜치 경쟁 → 4b 패키지 분리)
+- 단계 3의 CI(`1eb8393`) 통과 확인 후 진행.
+- **4a**: `schema.py` 신규(`load_portfolios_document`/`load_holdings_document`가 형식 검사 + `schema_version` 채움, `StoreError`/`ConflictError`를 여기로 이동). `LocalBackend.read()`/`GitHubBackend.read()`가 JSON 디코드 실패를 `StoreError`로 감싸도록 수정(전에는 `json.JSONDecodeError`가 그대로 새어 나갔음). `GitHubBackend._ensure_branch()`가 브랜치 생성 422를 받으면 재조회해 이미 존재하면 성공으로 처리(최초 저장 경쟁 완화).
+- 기존 xfail 3건(브랜치 경쟁, 손상 JSON, 잘못된 구조)을 통과 테스트로 전환하고, 스키마 버전 부여·레거시 파일 자동 마이그레이션(다음 쓰기 시)·보유 수량 문서 형식 검증 등 테스트 8건 추가.
+- **4a 완료 후 전체 스위트: 221개 통과, 기대 실패 0건**(계획서에 있던 A1/A2/A3/A5/A6/A8/E2/E6가 모두 해소됨).
+- **4b**: `portfolio_store.py`를 `storage/` 패키지로 분리 — `storage/schema.py`(그대로 이동), `storage/backends.py`(`LocalBackend`, `GitHubBackend`, `get_backend`), `storage/repository.py`(포트폴리오·보유 수량 저장 로직). `storage/__init__.py`가 공개 API를 재수출해 호출부는 `import portfolio_store as ps` → `import storage as ps` 한 줄만 바꾸면 되게 함(`app_advanced.py`, `tests/conftest.py`, `tests/test_portfolio_store.py`). 앱 격리 테스트(`app_env`)가 패키지 디렉터리도 복사하고 하위 모듈까지 `sys.modules`에서 정리하도록 보강.
+- 분리 후 전체 스위트 재확인(221 통과, pandas 3.0.6 환경 198 통과)과 실제 Yahoo 데이터로 임시 복사본 앱 구동(저장→비교, `data/portfolios.json` 생성) 확인.
+- **하지 않은 것(계획서에 명시)**: E3(동시성 — `GitHubBackend`가 `st.cache_resource`로 모든 세션에 공유되고 내부 `requests.Session`도 공유됨)은 코드 검토만 하고 잠금 등 코드 변경은 하지 않음(4명 규모에서 위험 수용). E4(GitHub Contents API 쓰기 파일 크기 한계)는 조사만 함 — 공식 문서는 읽기(GET) 1MB 기준만 명시하고 쓰기(PUT) 한계는 명시하지 않아 정확한 수치를 확인하지 못함, 현재 파일 크기(수 KB)로는 문제되지 않아 코드 변경 없음. 실제 GitHub 토큰을 쓴 백업·복구 리허설도 하지 않음(로컬/가짜 서버 테스트로만 검증).
+- 릴리스 노트에 짧게 추가: 화면 동작은 바뀌지 않고, 손상된 저장 파일에 대한 오류 메시지만 나아짐.
+- 남은 일: 푸시 후 CI 확인, 단계 5(UI 분해와 위생 정리: 모놀리스 분해, 차트 3중 복제 제거, `app.py`/`custom_backtest.py` 폐기·정리, 낡은 문서 `docs/legacy/` 이동)로 진행.
+
 ### 리팩토링 단계 3: 정확성 PR (A1 첫 거래일, A3 샤프 폭주)
 - 단계 2의 CI(YAML 오류 수정 후 `7278f2e`) 통과 확인 후 진행.
 - **A1**: `backtest_rebalancing`이 시작일(초기 자본)을 시계열 첫 점으로 포함하도록 수정. 총수익률=마지막/초기 자본, 연환산의 분모를 "수익률이 적용된 일수"(`len(df)-1`)로 변경. 손계산 예시(가격 100→110→110→121, 실제 +21%)가 정확히 +21%로 나옴을 확인.

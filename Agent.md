@@ -37,7 +37,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
 | `rebalance_engine.py` | 리밸런싱 백테스트(`backtest_rebalancing`)와 성과 지표(`calculate_metrics`) |
 | `custom_backtest.py` | 사용자 정의 비중 백테스트. 누락 티커 제거·정규화 후 `rebalance_engine.backtest_rebalancing`에 위임 |
 | `rebalancing_guide.py` | 현재가 조회, 보유 수량 대비 매수/매도 수량 계산, 거래 비용 계산 |
-| `portfolio_store.py` | 영속화. `GitHubBackend`(GitHub Contents API, 별도 `data` 브랜치) / `LocalBackend`(로컬 파일, 개발용). 공용 포트폴리오(`data/portfolios.json`, 작성자 표시·작성자만 수정/삭제)와 사용자별 보유 수량(`users/<해시>.json`)을 다룬다 |
+| `storage/` | 영속화 패키지. `schema.py`(문서 형태 검사·스키마 버전, `StoreError`/`ConflictError`), `backends.py`(`GitHubBackend`: GitHub Contents API·별도 `data` 브랜치 / `LocalBackend`: 로컬 파일, 개발용), `repository.py`(포트폴리오·보유 수량 저장 로직: 소유권, 병합). `__init__.py`가 공개 API를 한데 묶어 앱은 `import storage as ps`로 예전과 같이 `ps.xxx`로 쓴다. 공용 포트폴리오(`data/portfolios.json`, 작성자 표시·작성자만 수정/삭제)와 사용자별 보유 수량(`users/<해시>.json`)을 다룬다 |
 | `errors.py` / `validation.py` | 오류 계약과 입력 검증. `ValidationError`(입력·데이터 오류, 메시지를 그대로 화면에 표시), `MarketDataError`(시세 조회 실패). 엔진·가이드·시세 조회는 조용히 넘어가지 않고 이 예외를 던진다 |
 | `auth.py` | Google 로그인(`st.login`) 판정. 허용 이메일(`ALLOWED_EMAILS`) 검사, 사용자 키(이메일 SHA-256 앞 12자리) 생성. 로그인 설정이 없고 GitHub 저장소만 설정되면 앱을 열지 않는다(fail-closed) |
 | `tests/` | pytest 테스트(엔진·가이드·저장소·인증·앱 스모크), `fakes.py`(가짜 Yahoo·GitHub), `conftest.py`(합성 시세, 격리된 앱 실행 fixture) |
@@ -96,7 +96,8 @@ streamlit run app.py            # 초기 단일 페이지 버전
 
 ## 배포 (Streamlit Community Cloud)
 
-- 로컬 디스크는 휘발성이다. 재부팅/재배포 시 앱이 쓴 파일은 사라지므로 **로컬 파일 저장(`LocalBackend`)은 Cloud에서 영속화가 되지 않는다.** 저장한 포트폴리오는 `portfolio_store.GitHubBackend`가 GitHub의 JSON 파일(`data/portfolios.json`)에 커밋해 보관하고, 탭4의 JSON 다운로드/업로드가 백업 수단이다. 설계 배경은 `docs/portfolio-storage-research.md`.
+- 로컬 디스크는 휘발성이다. 재부팅/재배포 시 앱이 쓴 파일은 사라지므로 **로컬 파일 저장(`LocalBackend`)은 Cloud에서 영속화가 되지 않는다.** 저장한 포트폴리오는 `storage.GitHubBackend`가 GitHub의 JSON 파일(`data/portfolios.json`)에 커밋해 보관하고, 탭4의 JSON 다운로드/업로드가 백업 수단이다. 설계 배경은 `docs/portfolio-storage-research.md`.
+- 저장 문서에는 `schema_version`이 있다(`storage/schema.py`). 읽을 때 형태를 검사하고(StoreError), 버전이 없는 옛 파일은 다음에 쓸 때 자동으로 버전이 채워진다(강제 마이그레이션 없음). GitHub 최초 저장 시 데이터 브랜치가 없으면 자동 생성하며, 동시에 두 요청이 브랜치를 만들려 하는 경쟁(422)은 재조회로 넘어간다.
 - **Cloud는 추적 브랜치(main)에 푸시가 있을 때마다 앱을 재배포한다.** 그래서 저장 데이터는 main이 아닌 별도 브랜치(`data`)나 별도 저장소에 커밋한다. 데이터 커밋을 main에 하지 않는다.
 - **코드 저장소(`leenamkee/quant_portfolio`)는 공개(public)다.** 데이터를 같은 저장소에 저장하면 누구나 읽을 수 있으므로, 운영 시 `GITHUB_REPO`는 별도의 비공개 저장소로 지정한다. 실제 보유 수량 같은 민감한 값을 코드나 커밋에 넣지 않는다(탭3 기본 보유 수량은 이미 이력에 남아 있음, `docs/multi-user-plan.md` 참고).
 - 저장소 관련 secrets: `GITHUB_TOKEN`(데이터 저장소 한 곳에만 Contents 읽기/쓰기), `GITHUB_REPO`, 선택 `GITHUB_DATA_BRANCH`(기본 `data`). 없으면 로컬 파일로 대체되고 탭4에 경고가 뜬다.
