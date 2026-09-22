@@ -4,13 +4,17 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 
+import market_data as md
 from config import (CAPITAL_STEP, DEFAULT_INITIAL_CAPITAL, DEFAULT_LOOKBACK_DAYS, DEFAULT_REBALANCE,
                     REBALANCE_OPTIONS, TICKER_NAMES, frequency_from_option, rebalance_index)
 from errors import MarketDataError, ValidationError
 
 
 def ticker_name(ticker):
-    return TICKER_NAMES.get(ticker, "(미등록)")
+    """config.TICKER_NAMES(국내 종목 한글명)에 없으면 yfinance에서 받은 이름으로 보완한다."""
+    if ticker in TICKER_NAMES:
+        return TICKER_NAMES[ticker]
+    return md.get_ticker_name(ticker) or "(미등록)"
 
 
 def normalize_ticker(text):

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 import yfinance as yf
 
-from config import LATEST_PRICE_TTL_SECONDS, PRICE_HISTORY_TTL_SECONDS
+from config import LATEST_PRICE_TTL_SECONDS, PRICE_HISTORY_TTL_SECONDS, TICKER_NAME_TTL_SECONDS
 from errors import MarketDataError, ValidationError
 from validation import extract_close, validate_dates
 
@@ -124,6 +124,25 @@ def fetch_latest_prices(tickers):
         result.as_of[ticker] = valid.index[-1]
     _cache_put(key, result)
     return result.copy()
+
+
+def get_ticker_name(ticker):
+    """
+    yfinance에서 종목명을 가져온다(config.TICKER_NAMES에 없는 티커용). 실패하거나 이름이 없으면 None.
+    결과(실패 포함)를 하루 동안 캐시해 같은 티커를 요청마다 다시 조회하지 않는다.
+    """
+    ticker = str(ticker).strip()
+    key = ("name", ticker)
+    cached = _cache_get(key, TICKER_NAME_TTL_SECONDS)
+    if cached is not None:
+        return cached or None
+    try:
+        info = yf.Ticker(ticker).info
+        name = info.get("longName") or info.get("shortName") or ""
+    except Exception:
+        name = ""
+    _cache_put(key, name)
+    return name or None
 
 
 def get_current_prices(tickers):

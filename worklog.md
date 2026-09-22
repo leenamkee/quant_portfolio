@@ -4,6 +4,15 @@
 
 ## 2026-09-22
 
+### 등록되지 않은 종목명을 yfinance로 보완
+- 계기: 사용자가 만들어 준 해외 벤치마크 포트폴리오(VTI, TLT 등, `config.TICKER_NAMES`에 없음)를 탭2에서 불러오니 종목명이 전부 `(미등록)`으로 나온다는 지적.
+- pykrx로 국내 종목명을 보완하는 방안을 먼저 검토했으나, 2026-09부터 KRX 데이터 포털이 로그인을 요구하도록 바뀌어(`sharebook-kr/pykrx#244`) `KRX_ID`/`KRX_PW` 자격증명을 새로 관리해야 하는 부담이 있어 채택하지 않음(실제로 로컬에 설치해 `get_market_ticker_name`을 호출해보고 로그인 실패를 확인함).
+- 대신 `market_data.get_ticker_name(ticker)`를 추가: `yfinance.Ticker(ticker).info`의 `longName`/`shortName`을 쓰고, 기존 `market_data._cache`(프로세스 전역 TTL 캐시)를 그대로 재사용해 하루(`TICKER_NAME_TTL_SECONDS`) 캐시한다. 실패도 캐시한다(가격 조회와 다른 점 — 가격 오류는 캐시하지 않지만, 이름 조회 실패는 매 요청마다 다시 API를 부르지 않도록 의도적으로 캐시함).
+- `ui/components.py`의 `ticker_name()`이 이 함수를 호출하도록 바꿈: `TICKER_NAMES`(국내 한글명) 우선 → 없으면 API → 그마저 없으면 `(미등록)`.
+- `ui/tabs/compare.py`(저장된 포트폴리오 구성 표)와 `ui/tabs/rebalance_guide.py`(리밸런싱 액션 표)가 `TICKER_NAMES.get(t, t)`/`.map(TICKER_NAMES).fillna(...)`로 `ticker_name()`을 우회하고 있던 것을 발견해 함께 고침(전에는 API 보완이 이 두 곳에는 적용되지 않았을 것).
+- **테스트 격리 주의**: `tests/conftest.py`의 `fake_yahoo`가 `yfinance.download`만 대체하고 있어서, 그대로 두면 `ticker_name()`이 등록 안 된 티커를 만날 때(예: 기존 `test_tab2_add_and_remove_ticker_rows`의 `069500.KS`) 테스트 중에 실제 yfinance 네트워크 호출이 나갈 뻔했다. `fake_yahoo`에 `_FakeTicker`(빈 `info`)를 추가해 `yfinance.Ticker`도 대체하도록 고쳐서 막음. `test_market_data.py`에 `get_ticker_name`(성공/실패/캐시/TTL) 단위 테스트 8개, `test_app_smoke.py`에 `yfinance.Ticker`를 재정의해 실제로 이름이 채워지는 것까지 확인하는 스모크 테스트 1개 추가.
+- 확인: 고정 venv 228통과(기존 220 + 신규 8), pandas 3.x venv 204통과(스모크 제외). 임시 복사본에 실제 Yahoo 데이터로 탭2에 "VTI" 추가 → "Vanguard Morningstar Total Stock Market ETF"로 채워지는 것을 실제 API 호출로 확인.
+
 ### 리팩토링 단계 5: UI 분해와 위생 정리
 - 단계 4의 CI(`c2a7fa7`) 통과 확인 후 진행.
 - **UI 분해**: `app_advanced.py`(615줄)를 진입점(약 80줄)으로 줄이고 `ui/` 패키지를 신설.

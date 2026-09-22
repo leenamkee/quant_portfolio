@@ -57,11 +57,18 @@ def krx_prices():
     return _random_walk(sorted(config.DEFAULT_TARGET_WEIGHTS), seed=7)
 
 
+class _FakeTicker:
+    """yfinance.Ticker를 대신한다. info를 비워 두면 앱은 종목명을 얻지 못한 것으로 본다."""
+    def __init__(self, ticker):
+        self.info = {}
+
+
 @pytest.fixture
 def fake_yahoo(monkeypatch, krx_prices):
-    """앱과 엔진이 호출하는 yfinance.download를 합성 시세로 대체한다."""
+    """앱과 엔진이 호출하는 yfinance.download/Ticker를 합성 데이터로 대체한다."""
     import yfinance
     monkeypatch.setattr(yfinance, "download", make_download(krx_prices))
+    monkeypatch.setattr(yfinance, "Ticker", _FakeTicker)
     return krx_prices
 
 

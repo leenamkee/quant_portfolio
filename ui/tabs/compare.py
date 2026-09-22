@@ -9,10 +9,10 @@ import market_data as md
 import rebalance_engine as backtest_engine
 import storage as ps
 from alignment import align_prices
-from config import COMPARE_DEFAULT_REBALANCE, TICKER_NAMES, format_sharpe
+from config import COMPARE_DEFAULT_REBALANCE, format_sharpe
 from errors import ValidationError
 from ui import state
-from ui.components import backtest_settings, show_error
+from ui.components import backtest_settings, show_error, ticker_name
 
 
 def _render_compositions(saved):
@@ -21,7 +21,7 @@ def _render_compositions(saved):
         for p in saved:
             for t, w in p["weights"].items():
                 rows.append({"포트폴리오": p["name"], "작성자": p.get("owner_name") or "-", "티커": t,
-                             "종목명": TICKER_NAMES.get(t, t), "비중": f"{w:.1%}"})
+                             "종목명": ticker_name(t), "비중": f"{w:.1%}"})
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 

@@ -5,7 +5,7 @@ import streamlit as st
 import market_data as md
 import rebalancing_guide as rg
 import storage as ps
-from config import DEFAULT_TARGET_WEIGHTS, TICKER_NAMES
+from config import DEFAULT_TARGET_WEIGHTS
 from ui import state
 from ui.components import row_controls, show_error, ticker_name, ticker_table_editor
 
@@ -61,7 +61,7 @@ def _render_guide(current_holdings, target_weights):
             if latest.missing:
                 st.warning(f"현재가를 받지 못한 종목(보유·목표 비중이 없어 계산에는 영향 없음): {', '.join(latest.missing)}")
 
-            rebalancing_df.insert(1, '종목명', rebalancing_df['Ticker'].map(TICKER_NAMES).fillna(rebalancing_df['Ticker']))
+            rebalancing_df.insert(1, '종목명', rebalancing_df['Ticker'].map(ticker_name))
 
             st.subheader("리밸런싱 액션 테이블")
             st.dataframe(rebalancing_df, width="stretch")

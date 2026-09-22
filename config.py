@@ -44,6 +44,8 @@ def format_sharpe(value):
 # 시세 캐시(프로세스 안의 모든 사용자 세션이 공유). 요청 수를 줄이되 장중 가격이 너무 낡지 않게 한다.
 PRICE_HISTORY_TTL_SECONDS = 1800
 LATEST_PRICE_TTL_SECONDS = 300
+# 종목명은 거의 바뀌지 않으므로 하루 동안 캐시한다(TICKER_NAMES에 없는 티커에 대한 API 조회용).
+TICKER_NAME_TTL_SECONDS = 86400
 
 
 def rebalance_index(option):

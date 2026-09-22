@@ -130,6 +130,21 @@ def test_tab2_add_and_remove_ticker_rows(run_app):
     assert "069500.KS" not in list(at.session_state["bt_table"]["티커"])
 
 
+def test_tab2_new_ticker_name_is_filled_in_from_yfinance_when_available(run_app, monkeypatch):
+    import yfinance
+
+    class _NamedTicker:
+        def __init__(self, ticker):
+            self.info = {"longName": "Vanguard Total Stock Market ETF"} if ticker == "VTI" else {}
+    monkeypatch.setattr(yfinance, "Ticker", _NamedTicker)
+
+    at = run_app()
+    at.text_input(key="bt_new_0").set_value("VTI").run()
+    at.button(key="bt_add_button").click().run()
+    table = at.session_state["bt_table"]
+    assert list(table["티커"])[-1] == "VTI" and table["종목명"].iloc[-1] == "Vanguard Total Stock Market ETF"
+
+
 # ---------- 탭3: 리밸런싱 가이드 ----------
 
 def test_tab3_generates_guide_with_names(run_app):

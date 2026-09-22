@@ -232,3 +232,66 @@ def test_latest_price_cache_is_shared_regardless_of_ticker_order(monkeypatch):
     md.fetch_latest_prices(["A", "B"])
     md.fetch_latest_prices(["B", "A"])
     assert len(calls) == 1
+
+
+# ---------- 종목명 (config.TICKER_NAMES에 없는 티커를 yfinance로 보완) ----------
+
+def _fake_ticker_class(info_by_ticker, calls=None):
+    class _Ticker:
+        def __init__(self, ticker):
+            if calls is not None:
+                calls.append(ticker)
+            self.info = info_by_ticker.get(ticker, {})
+    return _Ticker
+
+
+def test_ticker_name_uses_long_name(monkeypatch):
+    monkeypatch.setattr(md.yf, "Ticker", _fake_ticker_class({"VTI": {"longName": "Vanguard Total Stock Market ETF"}}))
+    assert md.get_ticker_name("VTI") == "Vanguard Total Stock Market ETF"
+
+
+def test_ticker_name_falls_back_to_short_name(monkeypatch):
+    monkeypatch.setattr(md.yf, "Ticker", _fake_ticker_class({"VTI": {"shortName": "Vanguard Total Stock Mkt"}}))
+    assert md.get_ticker_name("VTI") == "Vanguard Total Stock Mkt"
+
+
+def test_ticker_name_is_none_when_info_has_no_name(monkeypatch):
+    monkeypatch.setattr(md.yf, "Ticker", _fake_ticker_class({"VTI": {}}))
+    assert md.get_ticker_name("VTI") is None
+
+
+def test_ticker_name_is_none_when_lookup_raises(monkeypatch):
+    class _Broken:
+        def __init__(self, ticker):
+            raise ConnectionError("down")
+    monkeypatch.setattr(md.yf, "Ticker", _Broken)
+    assert md.get_ticker_name("VTI") is None
+
+
+def test_ticker_name_lookup_is_cached(monkeypatch):
+    calls = []
+    monkeypatch.setattr(md.yf, "Ticker", _fake_ticker_class({"VTI": {"longName": "Vanguard Total Stock Market ETF"}}, calls))
+    md.get_ticker_name("VTI")
+    md.get_ticker_name("VTI")
+    assert calls == ["VTI"]
+
+
+def test_ticker_name_failure_is_also_cached(monkeypatch):
+    """가격 조회 오류(test_errors_are_not_cached)와 달리, 이름 조회 실패는 매 요청마다 다시 부르지 않도록 캐시한다."""
+    calls = []
+    monkeypatch.setattr(md.yf, "Ticker", _fake_ticker_class({}, calls))
+    md.get_ticker_name("UNKNOWN")
+    md.get_ticker_name("UNKNOWN")
+    assert calls == ["UNKNOWN"]
+
+
+def test_ticker_name_cache_expires_after_ttl(monkeypatch, clock):
+    calls = []
+    monkeypatch.setattr(md.yf, "Ticker", _fake_ticker_class({"VTI": {"longName": "Vanguard Total Stock Market ETF"}}, calls))
+    md.get_ticker_name("VTI")
+    clock["t"] += config.TICKER_NAME_TTL_SECONDS - 1
+    md.get_ticker_name("VTI")
+    assert len(calls) == 1
+    clock["t"] += 2
+    md.get_ticker_name("VTI")
+    assert len(calls) == 2
