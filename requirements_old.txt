@@ -1,9 +1,0 @@
-streamlit
-yfinance
-pandas
-numpy
-plotly
-PyPortfolioOpt
-quantstats
-matplotlib
-scikit-learn

@@ -194,3 +194,29 @@ def test_metrics_need_at_least_two_days_of_values():
         engine.calculate_metrics(one_day)
     with pytest.raises(ValidationError):
         engine.calculate_metrics(None)
+
+
+# ---------- backtest_custom_portfolio (누락 종목을 허용하는 변형) ----------
+
+def test_custom_backtest_matches_direct_call_and_ignores_zero_weight_tickers(prices):
+    weights = {"AAA.KS": 0.5, "BBB.KS": 0.5}
+    custom = engine.backtest_custom_portfolio(prices, {**weights, "ZZZ.KS": 0.0}, "M", 1_000_000)
+    full = {**weights, "CCC.KS": 0.0, "DDD.KS": 0.0}
+    direct = engine.backtest_rebalancing(prices, full, "M", 1_000_000)
+    assert np.allclose(custom["Portfolio Value"], direct["Portfolio Value"])
+
+
+def test_custom_backtest_rejects_a_weighted_ticker_without_price_data(prices):
+    # 예전(별도 custom_backtest 모듈)에는 가격이 없는 종목을 조용히 버리고 다른 구성으로 계산했다
+    with pytest.raises(ValidationError, match="ZZZ.KS"):
+        engine.backtest_custom_portfolio(prices, {"AAA.KS": 0.5, "ZZZ.KS": 0.5}, None, 1000)
+
+
+def test_custom_backtest_rejects_weights_with_no_available_ticker(prices):
+    with pytest.raises(ValidationError):
+        engine.backtest_custom_portfolio(prices, {"ZZZ.KS": 1.0}, None, 1000)
+
+
+def test_custom_backtest_validates_weights_first(prices):
+    with pytest.raises(ValidationError, match="음수"):
+        engine.backtest_custom_portfolio(prices, {"AAA.KS": 1.5, "BBB.KS": -0.5}, None, 1000)

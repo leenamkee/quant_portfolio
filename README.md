@@ -17,8 +17,6 @@ Streamlit 기반의 포트폴리오 최적화 · 리밸런싱 백테스트 · �
 
 성과 지표: 총 수익률, 연환산 수익률(CAGR), 연환산 변동성, 샤프 지수, 최대 낙폭(MDD).
 
-`app.py`는 탭1과 유사한 초기 단일 페이지 버전입니다.
-
 ## 기본 포트폴리오
 
 | 티커 | 종목명 | 분류 | 목표 비중 |
@@ -56,15 +54,14 @@ python -m pytest
 
 ```
 .
-├── app_advanced.py       # 메인 앱 (자동 최적화 / 사용자 정의 백테스트 / 리밸런싱 가이드 / 포트폴리오 비교)
-├── app.py                # 초기 단일 페이지 버전
+├── app_advanced.py       # 진입점 (설정, 로그인 게이트, 탭 배치)
+├── ui/                   # 화면: state/context/components/charts, tabs/(탭1~4)
 ├── config.py             # 종목명·기본 비중·화면 기본값·캐시 TTL 등 상수
 ├── market_data.py        # 시세 조회 단일 진입점 (종료일 포함, TTL 캐시, 오류 계약)
 ├── alignment.py          # 공통 관측 구간 정렬 (결측을 채우지 않음)
 ├── portfolio_engine.py   # 포트폴리오 최적화, 목표 비중 대체, 이산 매수 수량
 ├── validation.py, errors.py  # 입력 검증과 오류 종류
-├── rebalance_engine.py   # 리밸런싱 백테스트, 성과 지표
-├── custom_backtest.py    # 사용자 정의 비중 백테스트
+├── rebalance_engine.py   # 리밸런싱 백테스트, 사용자 정의 백테스트, 성과 지표
 ├── rebalancing_guide.py  # 보유 수량 기반 매수/매도 가이드, 거래 비용
 ├── storage/              # 포트폴리오·보유 수량 영속화 패키지 (schema/backends/repository, GitHub JSON 또는 로컬 파일)
 ├── auth.py               # Google 로그인 판정, 허용 이메일

@@ -8,10 +8,10 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_FILES = [
-    "app_advanced.py", "alignment.py", "auth.py", "config.py", "custom_backtest.py", "errors.py", "market_data.py",
+    "app_advanced.py", "alignment.py", "auth.py", "config.py", "errors.py", "market_data.py",
     "portfolio_engine.py", "rebalance_engine.py", "rebalancing_guide.py", "validation.py",
 ]
-APP_PACKAGES = ["storage"]
+APP_PACKAGES = ["storage", "ui"]
 APP_MODULES = [f[:-3] for f in APP_FILES]
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))

@@ -1,0 +1,10 @@
+# 이 앱이 직접 import하는 라이브러리만 적는다. requirements.txt는 이걸 설치했을 때 실제로 깔리는
+# 전체 트리(직접 + 전이 의존성)를 고정한 잠금 파일이다. 버전을 바꾸려면 여기부터 바꾸고
+# requirements.txt를 다시 만든다(예: pip-compile, 또는 깨끗한 venv에 설치 후 `pip freeze`).
+streamlit[auth]==1.52.2
+pandas==2.3.3
+numpy==2.4.0
+plotly==5.24.1
+yfinance==1.0
+PyPortfolioOpt==1.5.6
+requests==2.32.5

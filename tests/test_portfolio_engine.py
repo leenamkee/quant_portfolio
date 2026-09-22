@@ -2,10 +2,8 @@ import numpy as np
 import pytest
 
 import config
-import custom_backtest as cb
 import portfolio_engine as pe
 from errors import ValidationError
-import rebalance_engine as engine
 
 
 # ---------- 도메인 규칙: DC형 퇴직연금 위험자산 70% ----------
@@ -77,33 +75,3 @@ def test_discrete_allocation_never_exceeds_capital(prices):
     allocation, leftover = pe.get_discrete_allocation(weights, latest, 1_000_000)
     spent = sum(latest[t] * n for t, n in allocation.items())
     assert leftover >= 0 and spent + leftover == pytest.approx(1_000_000)
-
-
-# ---------- custom_backtest (얇은 래퍼) ----------
-
-def test_custom_backtest_matches_engine_and_ignores_zero_weight_tickers(prices):
-    weights = {"AAA.KS": 0.5, "BBB.KS": 0.5}
-    custom = cb.backtest_custom_portfolio(prices, {**weights, "ZZZ.KS": 0.0}, "M", 1_000_000)
-    full = {**weights, "CCC.KS": 0.0, "DDD.KS": 0.0}
-    direct = engine.backtest_rebalancing(prices, full, "M", 1_000_000)
-    assert np.allclose(custom["Portfolio Value"], direct["Portfolio Value"])
-
-
-def test_custom_backtest_reexports_the_engine_metrics_function():
-    assert cb.calculate_metrics is engine.calculate_metrics
-
-
-def test_custom_backtest_rejects_a_weighted_ticker_without_price_data(prices):
-    # 예전에는 가격이 없는 종목을 조용히 버리고 다른 구성으로 계산했다
-    with pytest.raises(ValidationError, match="ZZZ.KS"):
-        cb.backtest_custom_portfolio(prices, {"AAA.KS": 0.5, "ZZZ.KS": 0.5}, None, 1000)
-
-
-def test_custom_backtest_rejects_weights_with_no_available_ticker(prices):
-    with pytest.raises(ValidationError):
-        cb.backtest_custom_portfolio(prices, {"ZZZ.KS": 1.0}, None, 1000)
-
-
-def test_custom_backtest_validates_weights_first(prices):
-    with pytest.raises(ValidationError, match="음수"):
-        cb.backtest_custom_portfolio(prices, {"AAA.KS": 1.5, "BBB.KS": -0.5}, None, 1000)

@@ -186,3 +186,6 @@ data/users/
 
 # Streamlit 로컬 secrets (토큰/OAuth 비밀값, 절대 커밋 금지)
 .streamlit/secrets*.toml
+
+# IDE 설정(개인 환경)
+.idea/

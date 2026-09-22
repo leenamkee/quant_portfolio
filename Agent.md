@@ -13,7 +13,6 @@ Streamlit 기반 퀀트 포트폴리오 매니저. `yfinance`로 시세를 받�
 ```bash
 pip install -r requirements.txt
 streamlit run app_advanced.py   # 메인 앱 (4개 탭, 로그인 미설정 시 로컬 개발 모드)
-streamlit run app.py            # 초기 단일 페이지 버전
 ```
 
 - devcontainer(`.devcontainer/devcontainer.json`)는 `app_advanced.py`를 8501 포트로 자동 실행한다.
@@ -28,14 +27,13 @@ streamlit run app.py            # 초기 단일 페이지 버전
 
 | 파일 | 역할 |
 | --- | --- |
-| `app_advanced.py` | 메인 Streamlit 앱. 탭1 자동 최적화 / 탭2 사용자 정의 백테스트(+포트폴리오 저장) / 탭3 리밸런싱 가이드 / 탭4 포트폴리오 비교 |
-| `app.py` | 초기 버전 단일 페이지 앱 (탭1과 유사, 이후 기능 미반영 부분 있음) |
+| `app_advanced.py` | 진입점(약 80줄). 설정, 로그인 게이트, 사이드바, 탭 배치만 하고 각 탭은 `ui/tabs/*.render(ctx)`에 맡긴다 |
+| `ui/` | 화면 패키지. `state.py`(세션 키 상수, `ensure()`), `context.py`(`AppContext`: identity/store/user_store/refresh_saved_portfolios를 하나로 묶어 탭에 전달), `components.py`(오류 표시, 종목명·티커 정리, 표 편집기·행 추가삭제, 공통 기간/자본/주기 입력), `charts.py`(성과/배분/상관관계 차트 — 전에 3곳에 복제돼 있던 것), `tabs/optimize.py`·`tabs/custom_portfolio.py`·`tabs/rebalance_guide.py`·`tabs/compare.py`(탭1~4, 각 `render(ctx)`) |
 | `config.py` | **종목명(`TICKER_NAMES`)·기본 목표 비중(`DEFAULT_TARGET_WEIGHTS`)과 화면 기본값·TTL 등 상수의 단일 출처**. `rebalance_index()`, `frequency_from_option()` 헬퍼 |
 | `market_data.py` | **시세 조회의 단일 진입점**: `get_prices`(과거 종가, 종료일 포함), `fetch_latest_prices`/`get_current_prices`(마지막 사용 가능한 종가 + 기준일). 프로세스 전역 TTL 캐시(모든 세션 공유, 종목 집합 기준이라 티커 순서와 무관), 실패는 `MarketDataError` |
 | `alignment.py` | **공통 관측 구간 정렬**(`align_prices`)과 결측을 채우지 않는 일간 수익률(`daily_returns`). 분석 구간·늦게 시작한 종목·제외한 거래일을 `Aligned`로 돌려준다 |
 | `portfolio_engine.py` | 최적화(`optimize_portfolio`: max_sharpe / min_volatility / equal_weight / target_weight), 목표 비중 대체(`target_weight_portfolio`), 이산 매수 수량(`get_discrete_allocation`) |
-| `rebalance_engine.py` | 리밸런싱 백테스트(`backtest_rebalancing`)와 성과 지표(`calculate_metrics`) |
-| `custom_backtest.py` | 사용자 정의 비중 백테스트. 누락 티커 제거·정규화 후 `rebalance_engine.backtest_rebalancing`에 위임 |
+| `rebalance_engine.py` | 리밸런싱 백테스트(`backtest_rebalancing`), 누락 종목을 허용하는 변형(`backtest_custom_portfolio`, 옛 `custom_backtest.py`), 성과 지표(`calculate_metrics`) |
 | `rebalancing_guide.py` | 현재가 조회, 보유 수량 대비 매수/매도 수량 계산, 거래 비용 계산 |
 | `storage/` | 영속화 패키지. `schema.py`(문서 형태 검사·스키마 버전, `StoreError`/`ConflictError`), `backends.py`(`GitHubBackend`: GitHub Contents API·별도 `data` 브랜치 / `LocalBackend`: 로컬 파일, 개발용), `repository.py`(포트폴리오·보유 수량 저장 로직: 소유권, 병합). `__init__.py`가 공개 API를 한데 묶어 앱은 `import storage as ps`로 예전과 같이 `ps.xxx`로 쓴다. 공용 포트폴리오(`data/portfolios.json`, 작성자 표시·작성자만 수정/삭제)와 사용자별 보유 수량(`users/<해시>.json`)을 다룬다 |
 | `errors.py` / `validation.py` | 오류 계약과 입력 검증. `ValidationError`(입력·데이터 오류, 메시지를 그대로 화면에 표시), `MarketDataError`(시세 조회 실패). 엔진·가이드·시세 조회는 조용히 넘어가지 않고 이 예외를 던진다 |
@@ -54,7 +52,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
         → calculate_metrics → 총수익률/CAGR/변동성/샤프/MDD
 ```
 
-탭2는 `custom_backtest`, 탭3은 `rebalancing_guide`를 사용한다.
+탭2는 `rebalance_engine.backtest_custom_portfolio`, 탭3은 `rebalancing_guide`를 사용한다.
 
 ## 기본 종목 (KRX, yfinance 접미사 `.KS`)
 

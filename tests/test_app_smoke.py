@@ -60,7 +60,7 @@ def test_default_tables_use_default_portfolio(run_app):
 
 def test_tab1_optimization_runs(run_app):
     at = run_app()
-    at.sidebar.button(key="tab1_button").click().run()
+    at.button(key="tab1_button").click().run()
     assert errors(at) == [] and not at.error
     assert [m.label for m in at.metric][:2] == ["총 수익률", "연환산 수익률"]
 
@@ -224,8 +224,8 @@ def test_tab3_shows_the_price_basis_date(run_app):
 
 def test_tab1_reports_a_ticker_without_price_data(run_app):
     at = run_app()
-    at.sidebar.text_input(key="tab1_tickers").set_value("273130.KS, NOPE.KS").run()
-    at.sidebar.button(key="tab1_button").click().run()
+    at.text_input(key="tab1_tickers").set_value("273130.KS, NOPE.KS").run()
+    at.button(key="tab1_button").click().run()
     assert errors(at) == []
     assert any("NOPE.KS" in e.value for e in at.error)
 
@@ -285,6 +285,6 @@ def test_price_downloads_are_shared_between_tabs_through_the_cache(run_app, krx_
     monkeypatch.setattr(yfinance, "download", make_download(krx_prices, calls))
     at = run_app()
     at.button(key="custom_button").click().run()   # 탭2: 기본 6종목, 기본 기간
-    at.sidebar.button(key="tab1_button").click().run()  # 탭1: 같은 티커·기간
+    at.button(key="tab1_button").click().run()  # 탭1: 같은 티커·기간
     history_calls = [c for c in calls if "start" in c]
     assert len(history_calls) == 1  # 두 탭이 같은 요청을 한 번만 보냈다

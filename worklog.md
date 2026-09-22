@@ -4,6 +4,30 @@
 
 ## 2026-09-22
 
+### 리팩토링 단계 5: UI 분해와 위생 정리
+- 단계 4의 CI(`c2a7fa7`) 통과 확인 후 진행.
+- **UI 분해**: `app_advanced.py`(615줄)를 진입점(약 80줄)으로 줄이고 `ui/` 패키지를 신설.
+  - `ui/state.py`: 탭 경계를 넘나드는 세션 키 상수(`SAVED_PORTFOLIOS`, `BT_TABLE` 등)와 `ensure()` 헬퍼. 한 탭에서만 쓰는 위젯 키는 그 탭에 그대로 둠(B4).
+  - `ui/context.py`: `AppContext`(identity/store/user_store/refresh_saved_portfolios)로 탭 함수 인자를 하나로 묶음.
+  - `ui/components.py`: `show_error`, `ticker_name`/`normalize_ticker`, `show_analysis_window`, `row_controls`, 신규 `ticker_table_editor`(탭2·탭3의 거의 동일한 `st.data_editor` 스캐폴드를 통합)와 `backtest_settings`(기간·자본·주기 입력 4종, 탭1/탭2/탭4가 반복하던 것을 통합. 위젯 키는 `{prefix}_start` 등 기존 그대로).
+  - `ui/charts.py`: 성과 차트(가치 추이·낙폭·수익률 분포), 배분 파이차트+표, 상관관계 히트맵을 통합(B2) — `app.py`·탭1·탭2에 3벌 있던 코드. 제목을 한국어로 통일하고(I), 상관관계는 `pct_change()` 대신 `alignment.daily_returns`를 써서 버전 독립적으로 만듦.
+  - `ui/tabs/optimize.py`·`custom_portfolio.py`·`rebalance_guide.py`·`compare.py`: 탭1~4를 각각 `render(ctx)`로 분리(B1). **계획서의 파일명 제안과 다르게 탭2 파일을 `custom_portfolio.py`로 지었다** — 계획대로 `custom_backtest.py`로 하면 루트의 실제 계산 모듈과 이름이 같아 헷갈리기 때문(실질적 임포트 충돌은 없음, 가독성 문제).
+  - 위젯 키 100% 보존 확인: 변경 전 전체 위젯 키(`tab1_*`, `bt_*`, `rb_*`, `cmp_*`, `custom_*`, `save_name`, `compare_selected`, `delete_selected` 등)를 미리 뽑아두고, 옮긴 뒤 다시 검사해 하나도 안 바뀌었음을 확인(표 편집기 `version` 키 초기화 동작 포함).
+  - `use_container_width=True` → `width="stretch"`(F2, Streamlit 폐기 경고 대응) 전체 적용. `import rebalance_engine as re` → `as backtest_engine`(B7, 표준 라이브러리 `re`와의 충돌 방지). 탭1 설정을 사이드바에서 탭 본문으로 이동(B6) — 위젯 키는 그대로라 세션 초기화 없음.
+  - **UI 통합 과정에서 드러난 표현 불일치 하나 고침(I)**: 탭1의 자산 배분 표/파이차트에 종목명이 없었다(탭2는 있었음). `allocation_chart`로 통합하며 탭1에도 종목명이 붙게 됨(수치는 그대로, 표시만 보강).
+  - `md.get_prices`가 이제 항상 예외를 던지거나 비어있지 않은 결과를 주는 것을 확인하고(단계 1·2에서 보장됨), 탭1·탭2의 죽은 `if data.empty` 분기를 제거.
+- **위생 정리**:
+  - `custom_backtest.py`를 `rebalance_engine.py`로 흡수(`backtest_custom_portfolio` 함수 이동, C3). 테스트도 `test_rebalance_engine.py`로 이동.
+  - `app.py` 삭제(§9-1). Cloud 진입 파일이 `app_advanced.py`라는 직접 확인은 못 했지만(대시보드 접근 불가), 로그인·저장·비교 등 최근 몇 주간 실제로 써 온 기능이 전부 `app_advanced.py`에만 있었다는 정황으로 사실상 확실하다고 보고 진행. 다른 파일에서 `app.py`를 참조하는 곳 없음을 확인.
+  - 낡은 루트 한글 문서 3개를 `docs/legacy/`로 이동(`git mv`, 이력 보존)하고 각 파일 맨 위에 "초기 버전 기준 문서, 현재 동작과 다름 + README 안내" 문구 추가(§9-5).
+  - `requirements_old.txt` 삭제, `.idea/`를 저장소에서 추적 해제하고 `.gitignore`에 추가.
+  - `requirements.in` 신규(UTF-8, 이 앱이 직접 import하는 7개 패키지만): streamlit[auth], pandas, numpy, plotly, yfinance, PyPortfolioOpt, requests. `requirements.txt`(잠금 파일)에서 아무 데서도 안 쓰는 `QuantStats`, `seaborn`을 제거(정적 분석으로 0회 참조 확인). matplotlib/scipy 등 나머지 전이 의존성은 pypfopt/cvxpy가 실제로 필요로 하는지 이 환경에서 확실히 검증하지 못해 그대로 둠(아래 한계 참고).
+  - `.editorconfig` 신규(UTF-8, LF, 4칸 들여쓰기, 파일 끝 개행)(F4). `.python-version`(3.11) 신규(G5) — 로컬 pyenv·devcontainer·CI 참고용.
+  - **G5에서 발견한 것(중요)**: 조사 결과 Streamlit Community Cloud의 Python 버전은 저장소의 어떤 파일이 아니라 **배포 대시보드의 "Advanced settings" 드롭다운**으로 정해지고, Cloud의 기본값은 **Python 3.12**로 보고된다(`runtime.txt` 방식은 커뮤니티 보고상 신뢰할 수 없음). 우리 CI·devcontainer·이번에 추가한 `.python-version`은 전부 3.11이라, **실제 배포된 Cloud 앱이 3.11이 아니라 3.12(혹은 그 사이 다른 버전)로 돌고 있을 가능성**이 있다 — 배포 당시 사용자가 무엇을 선택했는지 확인하지 못했다. 코드 변경 없이 사실만 기록, 사용자에게 확인 요청 필요.
+- 확인 방법: 위젯 키 사전/사후 비교, 전체 스위트(pandas 2.3.3: 220 통과, pandas 3.0.6 비UI: 198 통과), 임시 복사본 앱에 실제 Yahoo 데이터로 탭1~4 전부 실행(로그인 없이 개발 모드, 저장·비교 포함), `py_compile` 전체.
+- **로컬에서 검증하지 못한 것**: `requirements.in`으로 완전히 새로 의존성을 해석하는 클린 설치는 이 Windows 샌드박스에서 `ecos`(cvxpy 솔버)가 MSVC 없이 빌드되지 않아 끝까지 못 돌렸다(단계 0에서 이미 겪은 것과 같은 환경 제약, Linux/Cloud와 무관). 대신 QuantStats·seaborn을 뺀 `requirements.txt`가 실제로 설치되는지는 **CI(Linux, 매 푸시마다 처음부터 설치)가 클린 설치 테스트 역할**을 한다고 보고 그 결과로 판단하기로 함.
+- 남은 일: 푸시 후 CI 확인. 사용자에게 Cloud 진입 파일과 Python 버전을 대시보드에서 확인해달라고 요청. 계획서의 단계 6(선택 항목: 성능, `st.navigation`, 린터, 거래비용)은 필요할 때 진행.
+
 ### 리팩토링 단계 4: 저장소 안정화 (4a 읽기 검증·스키마 버전·브랜치 경쟁 → 4b 패키지 분리)
 - 단계 3의 CI(`1eb8393`) 통과 확인 후 진행.
 - **4a**: `schema.py` 신규(`load_portfolios_document`/`load_holdings_document`가 형식 검사 + `schema_version` 채움, `StoreError`/`ConflictError`를 여기로 이동). `LocalBackend.read()`/`GitHubBackend.read()`가 JSON 디코드 실패를 `StoreError`로 감싸도록 수정(전에는 `json.JSONDecodeError`가 그대로 새어 나갔음). `GitHubBackend._ensure_branch()`가 브랜치 생성 422를 받으면 재조회해 이미 존재하면 성공으로 처리(최초 저장 경쟁 완화).

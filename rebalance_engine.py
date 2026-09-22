@@ -69,6 +69,21 @@ def backtest_rebalancing(data, initial_weights, rebalance_freq='M', initial_capi
     history_df = pd.DataFrame(portfolio_history).set_index('Date')
     return history_df
 
+def backtest_custom_portfolio(data, weights, rebalance_freq=None, initial_capital=10000):
+    """
+    사용자가 직접 정한 비중으로 백테스트를 수행합니다. backtest_rebalancing과 달리 비중이 data의 모든
+    종목을 다루지 않아도 되고(누락분은 0으로 간주), 비중이 0보다 큰 종목의 가격을 못 받으면 다른 구성으로
+    조용히 계산하지 않고 ValidationError를 발생시킵니다.
+    """
+    weights = validate_weights(weights)
+    missing = [t for t, w in weights.items() if w > 0 and t not in data.columns]
+    if missing:
+        raise ValidationError(f"가격 데이터를 받지 못한 종목이 있습니다: {', '.join(missing)}. 티커를 확인하세요.")
+
+    total_weight = sum(weights.values())
+    normalized_weights = {ticker: weights.get(ticker, 0) / total_weight for ticker in data.columns}
+    return backtest_rebalancing(data, normalized_weights, rebalance_freq, initial_capital)
+
 def calculate_metrics(history_df):
     """
     포트폴리오 성과 지표를 계산합니다.
