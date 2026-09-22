@@ -9,23 +9,22 @@ import custom_backtest as cb
 import rebalancing_guide as rg
 import portfolio_store as ps
 import auth
+import market_data as md
+from alignment import align_prices
+from config import (CAPITAL_STEP, COMPARE_DEFAULT_REBALANCE, DEFAULT_INITIAL_CAPITAL, DEFAULT_LOOKBACK_DAYS,
+                    DEFAULT_REBALANCE, DEFAULT_TARGET_WEIGHTS, REBALANCE_OPTIONS, TICKER_NAMES,
+                    frequency_from_option, rebalance_index)
 from errors import MarketDataError, ValidationError
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
 
-TICKER_NAMES = pe.TICKER_NAMES
-TARGET_WEIGHTS_PCT = {t: round(w * 100, 1) for t, w in pe.DEFAULT_TARGET_WEIGHTS.items()}
-DEFAULT_TICKERS = ", ".join(sorted(pe.DEFAULT_TARGET_WEIGHTS))
+TARGET_WEIGHTS_PCT = {t: round(w * 100, 1) for t, w in DEFAULT_TARGET_WEIGHTS.items()}
+DEFAULT_TICKERS = ", ".join(sorted(DEFAULT_TARGET_WEIGHTS))
 
 
 @st.cache_resource
 def get_store():
     return ps.get_backend(st.secrets)
-
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def load_prices(tickers, start, end):
-    return pe.get_stock_data(list(tickers), start, end)
 
 
 store = get_store()
@@ -88,6 +87,17 @@ def normalize_ticker(text):
     return ticker
 
 
+def show_analysis_window(aligned, requested_start):
+    """실제 분석 구간과, 요청과 달라진 이유를 보여준다."""
+    st.caption(f"분석 구간: {aligned.start:%Y-%m-%d} ~ {aligned.end:%Y-%m-%d} ({aligned.days}거래일)")
+    if aligned.limiting_ticker:
+        first = aligned.first_valid[aligned.limiting_ticker]
+        st.info(f"{ticker_name(aligned.limiting_ticker)}({aligned.limiting_ticker})의 가격이 {first:%Y-%m-%d}부터 있어 "
+                f"분석 시작일이 요청({requested_start})보다 늦어졌습니다. 모든 종목에 가격이 있는 구간만 사용합니다.")
+    if aligned.dropped_days:
+        st.warning(f"일부 종목의 가격이 없는 {aligned.dropped_days}거래일은 제외했습니다(앞 값으로 채우지 않음).")
+
+
 def row_controls(table_key, version_key, edited, new_row, prefix):
     """표 아래의 종목 추가/제거 UI. 표를 바꾸면 에디터 키(version)를 올려 편집 상태를 초기화한다."""
     version = st.session_state[version_key]
@@ -133,12 +143,12 @@ with tab1:
     tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", DEFAULT_TICKERS, key="tab1_tickers")
     tickers = [t.strip() for t in tickers_input.split(",")]
     
-    start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365*2), key="tab1_start")
+    start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=DEFAULT_LOOKBACK_DAYS), key="tab1_start")
     end_date = st.sidebar.date_input("종료일", datetime.now(), key="tab1_end")
     
-    initial_capital = st.sidebar.number_input("초기 자본 (원)", value=10000000, step=1000000, key="tab1_capital")
-    rebalance_freq = st.sidebar.selectbox("리밸런싱 주기", ["None", "M", "Q", "Y"], index=1, key="tab1_rebalance")
-    if rebalance_freq == "None": rebalance_freq = None
+    initial_capital = st.sidebar.number_input("초기 자본 (원)", value=DEFAULT_INITIAL_CAPITAL, step=CAPITAL_STEP, key="tab1_capital")
+    rebalance_freq = frequency_from_option(st.sidebar.selectbox(
+        "리밸런싱 주기", REBALANCE_OPTIONS, index=rebalance_index(DEFAULT_REBALANCE), key="tab1_rebalance"))
     
     opt_method = st.sidebar.selectbox("최적화 방법", ["max_sharpe", "min_volatility", "equal_weight", "target_weight"], key="tab1_method")
     
@@ -146,7 +156,10 @@ with tab1:
         with st.spinner("데이터를 가져오고 분석 중입니다..."):
             try:
                 # 1. 데이터 가져오기
-                data = pe.get_stock_data(tickers, start_date, end_date)
+                data = md.get_prices(tickers, start_date, end_date)
+                aligned = align_prices(data)
+                data = aligned.prices
+                show_analysis_window(aligned, start_date)
                 
                 if data.empty:
                     st.error("데이터를 가져오지 못했습니다. 티커를 확인해주세요.")
@@ -225,7 +238,7 @@ with tab2:
         st.success(st.session_state.pop("bt_flash"))
 
     def bt_default_table():
-        tickers = list(pe.DEFAULT_TARGET_WEIGHTS)
+        tickers = list(DEFAULT_TARGET_WEIGHTS)
         return pd.DataFrame({
             "티커": tickers,
             "종목명": [ticker_name(t) for t in tickers],
@@ -296,11 +309,11 @@ with tab2:
 
     with col2:
         st.subheader("백테스트 설정")
-        custom_start_date = st.date_input("시작일", datetime.now() - timedelta(days=365*2), key="custom_start")
+        custom_start_date = st.date_input("시작일", datetime.now() - timedelta(days=DEFAULT_LOOKBACK_DAYS), key="custom_start")
         custom_end_date = st.date_input("종료일", datetime.now(), key="custom_end")
-        custom_initial_capital = st.number_input("초기 자본 (원)", value=10000000, step=1000000, key="custom_capital")
-        custom_rebalance_freq = st.selectbox("리밸런싱 주기", ["None", "M", "Q", "Y"], index=1, key="custom_rebalance")
-        if custom_rebalance_freq == "None": custom_rebalance_freq = None
+        custom_initial_capital = st.number_input("초기 자본 (원)", value=DEFAULT_INITIAL_CAPITAL, step=CAPITAL_STEP, key="custom_capital")
+        custom_rebalance_freq = frequency_from_option(st.selectbox(
+            "리밸런싱 주기", REBALANCE_OPTIONS, index=rebalance_index(DEFAULT_REBALANCE), key="custom_rebalance"))
 
     save_col1, save_col2 = st.columns([3, 1])
     save_name = save_col1.text_input("포트폴리오 이름 (같은 이름이면 덮어씁니다)", key="save_name", placeholder="예: DC 기본안")
@@ -330,7 +343,10 @@ with tab2:
         with st.spinner("백테스트 중입니다..."):
             try:
                 # 데이터 가져오기
-                data = cb.get_stock_data(tickers_list, custom_start_date, custom_end_date)
+                data = md.get_prices(tickers_list, custom_start_date, custom_end_date)
+                aligned = align_prices(data)
+                data = aligned.prices
+                show_analysis_window(aligned, custom_start_date)
                 
                 if data.empty:
                     st.error("데이터를 가져오지 못했습니다. 티커를 확인해주세요.")
@@ -405,7 +421,7 @@ with tab3:
         except ps.StoreError as e:
             saved_holdings = {}
             st.warning(f"저장된 보유 수량을 불러오지 못했습니다: {e}")
-        initial_tickers = list(pe.DEFAULT_TARGET_WEIGHTS) + [t for t in saved_holdings if t not in pe.DEFAULT_TARGET_WEIGHTS]
+        initial_tickers = list(DEFAULT_TARGET_WEIGHTS) + [t for t in saved_holdings if t not in DEFAULT_TARGET_WEIGHTS]
         st.session_state["rb_table"] = pd.DataFrame({
             "티커": initial_tickers,
             "종목명": [ticker_name(t) for t in initial_tickers],
@@ -457,7 +473,7 @@ with tab3:
             try:
                 # 현재 주가 가져오기
                 tickers_for_prices = list(dict.fromkeys(list(current_holdings) + list(target_weights)))
-                latest = rg.fetch_latest_prices(tickers_for_prices)
+                latest = md.fetch_latest_prices(tickers_for_prices)
                 current_prices = latest.prices
                 
                 if not current_prices:
@@ -552,11 +568,11 @@ with tab4:
                                   format_func=labels.get, key="compare_selected")
 
         c1, c2, c3, c4 = st.columns(4)
-        cmp_start = c1.date_input("시작일", datetime.now() - timedelta(days=365*2), key="cmp_start")
+        cmp_start = c1.date_input("시작일", datetime.now() - timedelta(days=DEFAULT_LOOKBACK_DAYS), key="cmp_start")
         cmp_end = c2.date_input("종료일", datetime.now(), key="cmp_end")
-        cmp_capital = c3.number_input("초기 자본 (원)", value=10000000, step=1000000, key="cmp_capital")
-        cmp_freq = c4.selectbox("리밸런싱 주기", ["None", "M", "Q", "Y"], index=2, key="cmp_rebalance")
-        if cmp_freq == "None": cmp_freq = None
+        cmp_capital = c3.number_input("초기 자본 (원)", value=DEFAULT_INITIAL_CAPITAL, step=CAPITAL_STEP, key="cmp_capital")
+        cmp_freq = frequency_from_option(c4.selectbox(
+            "리밸런싱 주기", REBALANCE_OPTIONS, index=rebalance_index(COMPARE_DEFAULT_REBALANCE), key="cmp_rebalance"))
 
         if st.button("비교 실행", key="compare_button"):
             chosen = [p for p in saved if p["id"] in selected]
@@ -566,23 +582,25 @@ with tab4:
                 with st.spinner("백테스트 중입니다..."):
                     try:
                         all_tickers = tuple(sorted({t for p in chosen for t in p["tickers"]}))
-                        prices = load_prices(all_tickers, cmp_start, cmp_end)
+                        prices = md.get_prices(list(all_tickers), cmp_start, cmp_end)
                         curves, metric_rows = {}, []
                         for p in chosen:
                             missing = [t for t in p["tickers"] if t not in prices.columns]
                             if missing:
                                 st.warning(f"'{p['name']}': 데이터를 받지 못한 티커가 있어 제외했습니다 ({', '.join(missing)})")
                                 continue
-                            sub = prices[p["tickers"]].dropna()
-                            if len(sub) < 2:
-                                st.warning(f"'{p['name']}': 겹치는 거래일 데이터가 부족해 제외했습니다.")
+                            try:
+                                aligned = align_prices(prices[p["tickers"]])
+                            except ValidationError as e:
+                                st.warning(f"'{p['name']}': {e} 제외했습니다.")
                                 continue
+                            sub = aligned.prices
                             history = re.backtest_rebalancing(sub, p["weights"], cmp_freq, cmp_capital)
                             m = re.calculate_metrics(history)
                             curves[p["name"]] = history["Portfolio Value"]
                             metric_rows.append({
                                 "포트폴리오": p["name"],
-                                "기간": f"{sub.index[0]:%Y-%m-%d} ~ {sub.index[-1]:%Y-%m-%d}",
+                                "기간": f"{aligned.start:%Y-%m-%d} ~ {aligned.end:%Y-%m-%d}",
                                 "총 수익률": f"{m['Total Return']:.2%}",
                                 "연환산 수익률": f"{m['Annualized Return']:.2%}",
                                 "연환산 변동성": f"{m['Annualized Volatility']:.2%}",

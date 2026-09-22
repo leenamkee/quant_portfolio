@@ -4,6 +4,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import portfolio_engine as pe
+import config
+import market_data as md
 import rebalance_engine as re
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
@@ -15,7 +17,7 @@ st.markdown("""
 
 # 사이드바 설정
 st.sidebar.header("설정")
-tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", ", ".join(sorted(pe.DEFAULT_TARGET_WEIGHTS)))
+tickers_input = st.sidebar.text_input("티커 입력 (쉼표로 구분)", ", ".join(sorted(config.DEFAULT_TARGET_WEIGHTS)))
 tickers = [t.strip() for t in tickers_input.split(",")]
 
 start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365*2))
@@ -31,7 +33,7 @@ if st.sidebar.button("분석 실행"):
     with st.spinner("데이터를 가져오고 분석 중입니다..."):
         try:
             # 1. 데이터 가져오기
-            data = pe.get_stock_data(tickers, start_date, end_date)
+            data = md.get_prices(tickers, start_date, end_date)
             
             if data.empty:
                 st.error("데이터를 가져오지 못했습니다. 티커를 확인해주세요.")

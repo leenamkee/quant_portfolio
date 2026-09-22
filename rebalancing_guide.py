@@ -1,58 +1,10 @@
 import math
-from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
-from errors import MarketDataError, ValidationError
-from validation import extract_close, validate_holdings, validate_weights
-
-
-@dataclass
-class LatestPrices:
-    """티커별 마지막 사용 가능한 거래일 종가와 그 기준일."""
-    prices: dict = field(default_factory=dict)   # {ticker: 종가}
-    as_of: dict = field(default_factory=dict)    # {ticker: 기준일(Timestamp)}
-    missing: list = field(default_factory=list)  # 가격을 얻지 못한 티커
-
-    def distinct_dates(self):
-        return sorted({d.date() for d in self.as_of.values()})
-
-
-def fetch_latest_prices(tickers):
-    """
-    티커별 마지막 유효 종가와 기준일을 가져옵니다.
-    조회 자체가 실패하거나 결과가 비어 있으면 MarketDataError를 발생시킵니다.
-    일부 티커만 가격이 없는 경우는 결과의 missing에 담아 돌려주므로 호출자가 필요 여부를 판단합니다.
-    """
-    tickers = list(dict.fromkeys(str(t).strip() for t in tickers if str(t).strip()))
-    if not tickers:
-        raise ValidationError("현재가를 조회할 티커가 없습니다.")
-    try:
-        raw = yf.download(tickers, period='1mo', progress=False)
-    except Exception as e:
-        raise MarketDataError(f"현재가 조회에 실패했습니다: {e}") from e
-    data = extract_close(raw, tickers)
-
-    result = LatestPrices()
-    for ticker in tickers:
-        valid = data[ticker].dropna() if ticker in data.columns else pd.Series(dtype=float)
-        valid = valid[valid > 0]
-        if valid.empty:
-            result.missing.append(ticker)
-            continue
-        result.prices[ticker] = float(valid.iloc[-1])
-        result.as_of[ticker] = valid.index[-1]
-    return result
-
-
-def get_current_prices(tickers):
-    """마지막 사용 가능한 거래일 종가({ticker: 가격}). 하나도 얻지 못하면 MarketDataError를 발생시킵니다."""
-    result = fetch_latest_prices(tickers)
-    if not result.prices:
-        raise MarketDataError(f"현재가를 얻지 못했습니다: {', '.join(result.missing)}")
-    return result.prices
+from errors import ValidationError
+from validation import validate_holdings, validate_weights
 
 
 def _is_valid_price(price):

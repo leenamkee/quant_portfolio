@@ -4,6 +4,18 @@
 
 ## 2026-09-22
 
+### 리팩토링 단계 2: 설정·데이터 계약
+- 단계 1의 CI(`096d371`) 통과 확인 후 진행.
+- 신규: `config.py`(종목명·기본 비중·화면 기본값·TTL·헬퍼), `alignment.py`(`align_prices`: 공통 관측 구간 + 결측일 제외, `daily_returns`: 채우지 않는 수동 수익률), `market_data.py`(시세 조회 단일 진입점 + 프로세스 전역 TTL 캐시).
+- 이동/삭제: `portfolio_engine`의 시세 조회·상수 → `market_data`/`config`, `rebalancing_guide`의 현재가 조회 → `market_data`, `custom_backtest`의 `get_stock_data` 재수출 삭제, 앱 전용 `load_prices`(`st.cache_data`) 삭제. `portfolio_engine`은 yfinance를 더 이상 import하지 않음.
+- 엔진: `backtest_rebalancing`·`optimize_portfolio`가 `align_prices`를 스스로 적용(정책 §9-3). 앱은 `show_analysis_window()`로 분석 구간, 늦게 시작한 종목, 제외한 거래일을 표시. 탭4는 포트폴리오별로 정렬.
+- 앱의 반복 상수(기간 2년, 자본 1천만 원, 주기 옵션 4곳)를 `config`로 통일. 레거시 `app.py`는 새 모듈을 쓰도록 최소 수정(폐기 예정).
+- 테스트: 정렬(`test_alignment.py` 신규), 시세·캐시(`test_market_data.py` 신규, 이전 시세 테스트 이동), 엔진의 결측 정책 손계산 테스트, 앱 스모크에 분석 구간·제외 거래일 표시·탭 간 캐시 공유 추가. A2 기대 실패를 통과 테스트로 전환 → **207개 통과 + 5개 기대 실패**(A1, A3, E2 2건, E6). 파일 실행 순서를 바꿔도 동일.
+- **같은 테스트를 pandas 3.0.6 환경(별도 venv)에서도 실행: 비UI 184개가 동일한 결과**(단계 2 완료 기준). CI에 정보용 `compat-pandas3` 작업 추가.
+- **테스트가 잡은 것 2건**: 캐시 키가 티커 순서에 의존(탭1·탭2가 같은 요청을 두 번 보냄), 테스트 인프라의 모듈 객체 불일치(캐시 초기화가 다른 객체를 비움). 둘 다 수정.
+- 릴리스 노트에 결측 정책·분석 구간 표시·캐시 지연(현재가 최대 5분, 과거 30분)·탭4 동작 변경을 기록.
+- 남은 일: 푸시 후 CI 확인, 단계 3(정확성 PR: A1 첫 거래일, A3 샤프)으로 진행.
+
 ### 리팩토링 단계 1: 입력 검증과 실패 은닉 제거 (동작 변경)
 - 단계 0의 CI가 Linux/Python 3.11/고정 버전에서 **통과**함을 확인(`d48787b`, `ecos` 빌드와 yank된 numpy 설치도 문제없음)한 뒤 단계 1을 수행.
 - 신규: `errors.py`(`ValidationError`, `MarketDataError`), `validation.py`(비중·보유 수량·자본·주기·가격표·날짜 검사, `extract_close`).

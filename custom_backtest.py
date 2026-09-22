@@ -1,5 +1,4 @@
 from errors import ValidationError
-from portfolio_engine import get_stock_data  # noqa: F401 (앱에서 cb.get_stock_data로 사용)
 from rebalance_engine import backtest_rebalancing, calculate_metrics  # noqa: F401 (calculate_metrics는 앱에서 cb.calculate_metrics로 사용)
 from validation import validate_weights
 

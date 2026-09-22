@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+from alignment import align_prices, daily_returns
 from errors import ValidationError
 from validation import validate_capital, validate_frequency, validate_prices_frame, validate_weights
 
@@ -28,9 +29,9 @@ def backtest_rebalancing(data, initial_weights, rebalance_freq='M', initial_capi
         raise ValidationError(f"비중이 지정되지 않은 종목이 있습니다: {', '.join(missing)}")
     weights = validate_weights({t: initial_weights[t] for t in data.columns})
 
-    returns = data.pct_change().dropna()
-    if returns.empty:
-        raise ValidationError("수익률을 계산할 수 있는 거래일이 부족합니다. 종목들의 가격이 겹치는 거래일이 최소 2일 필요합니다.")
+    # 공통 관측 구간만 사용하고 가격이 없는 날은 제외한다(앞 값으로 채우지 않음). 2거래일 미만이면 ValidationError
+    data = align_prices(data).prices
+    returns = daily_returns(data)
 
     current_weights = np.array([weights[ticker] for ticker in data.columns])
     # 비중 합이 1이 아니면 리밸런싱할 때마다 자산이 줄거나 늘어나므로 정규화한다

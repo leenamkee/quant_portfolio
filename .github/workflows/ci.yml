@@ -29,3 +29,22 @@ jobs:
 
       - name: Test
         run: python -m pytest
+
+  # 신버전(pandas 3.x) 호환 확인. 배포는 고정 버전이므로 실패해도 CI 전체를 막지 않고 정보로만 쓴다.
+  compat-pandas3:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install (pandas 3.x, 나머지는 최신)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pandas>=3,<4" numpy pytest requests yfinance PyPortfolioOpt
+
+      - name: Test (Streamlit 앱 스모크 제외: 고정 Streamlit이 pandas<3을 요구)
+        run: python -m pytest --ignore=tests/test_app_smoke.py

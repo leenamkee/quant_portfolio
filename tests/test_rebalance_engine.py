@@ -97,13 +97,20 @@ def test_total_return_includes_first_day_return():
     assert engine.calculate_metrics(history)["Total Return"] == pytest.approx(0.21)
 
 
-# ---------- 결측·정렬 정책 (A2) ----------
+# ---------- 결측·정렬 정책 (A2, §9-3 확정: 공통 관측 구간, 전방 채움 없음) ----------
 
-@pytest.mark.xfail(reason="A2: 결측 처리가 pct_change의 pandas 버전 기본값(fill_method)에 의존한다 (단계 2에서 명시)")
-def test_alignment_does_not_depend_on_pandas_fill_default(gap_prices):
+def test_backtest_skips_days_with_missing_prices_without_forward_fill(gap_prices):
     history = engine.backtest_rebalancing(gap_prices, {"A": 0.5, "B": 0.5}, None, 1000)
-    explicit = gap_prices.pct_change(fill_method=None).dropna()
-    assert list(history.index) == list(explicit.index)
+    assert list(history.index) == [gap_prices.index[4], gap_prices.index[5]]
+    # 공통 구간은 B의 첫 유효일(idx2)부터이고 idx3은 B 가격이 없어 제외 → idx2→idx4의 수익률이 idx4에 반영된다
+    assert history["Portfolio Value"].iloc[0] == pytest.approx(500 * 104 / 102 + 500 * 52 / 50)
+
+
+def test_backtest_starts_at_the_latest_first_valid_date():
+    data = make_prices({"A": [100, 101, 102, 103], "B": [np.nan, np.nan, 50, 55]})
+    history = engine.backtest_rebalancing(data, {"A": 0.5, "B": 0.5}, None, 1000)
+    assert list(history.index) == [data.index[3]]
+    assert history["Portfolio Value"].iloc[0] == pytest.approx(500 * 103 / 102 + 500 * 55 / 50)
 
 
 # ---------- 입력 검증 (A8, 단계 1) ----------

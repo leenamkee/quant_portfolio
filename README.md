@@ -58,7 +58,11 @@ python -m pytest
 .
 ├── app_advanced.py       # 메인 앱 (자동 최적화 / 사용자 정의 백테스트 / 리밸런싱 가이드 / 포트폴리오 비교)
 ├── app.py                # 초기 단일 페이지 버전
-├── portfolio_engine.py   # 시세 조회, 포트폴리오 최적화, 목표 비중, 이산 매수 수량
+├── config.py             # 종목명·기본 비중·화면 기본값·캐시 TTL 등 상수
+├── market_data.py        # 시세 조회 단일 진입점 (종료일 포함, TTL 캐시, 오류 계약)
+├── alignment.py          # 공통 관측 구간 정렬 (결측을 채우지 않음)
+├── portfolio_engine.py   # 포트폴리오 최적화, 목표 비중 대체, 이산 매수 수량
+├── validation.py, errors.py  # 입력 검증과 오류 종류
 ├── rebalance_engine.py   # 리밸런싱 백테스트, 성과 지표
 ├── custom_backtest.py    # 사용자 정의 비중 백테스트
 ├── rebalancing_guide.py  # 보유 수량 기반 매수/매도 가이드, 거래 비용
@@ -73,7 +77,7 @@ python -m pytest
 
 ## 사용 팁
 
-- 목표 비중을 바꿀 때는 위험자산 합계가 70%를 넘지 않는지 확인하세요. 종목명과 목표 비중 기본값은 `portfolio_engine.py`의 `TICKER_NAMES`, `DEFAULT_TARGET_WEIGHTS` 한 곳에서 관리하며, 앱의 기본 입력값은 여기서 자동으로 만들어집니다.
+- 목표 비중을 바꿀 때는 위험자산 합계가 70%를 넘지 않는지 확인하세요. 종목명과 목표 비중 기본값은 `config.py`의 `TICKER_NAMES`, `DEFAULT_TARGET_WEIGHTS` 한 곳에서 관리하며, 앱의 기본 입력값은 여기서 자동으로 만들어집니다.
 - 리밸런싱 가이드 표에 본인의 실제 보유 수량을 입력하고 "내 보유 수량 저장"을 눌러두면 다음 접속 때 자동으로 불러옵니다.
 - `max_sharpe` 결과는 과거 데이터 기간에 민감해 특정 종목에 비중이 쏠릴 수 있으니 참고용으로 보세요.
 

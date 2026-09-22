@@ -47,10 +47,10 @@ def test_github_store_without_auth_is_blocked(run_app):
 # ---------- 기본 화면 값 ----------
 
 def test_default_tables_use_default_portfolio(run_app):
-    import portfolio_engine as pe
+    import config
     at = run_app()
     backtest, guide = at.session_state["bt_table"], at.session_state["rb_table"]
-    assert list(backtest["티커"]) == list(pe.DEFAULT_TARGET_WEIGHTS)
+    assert list(backtest["티커"]) == list(config.DEFAULT_TARGET_WEIGHTS)
     assert backtest["비중(%)"].sum() == pytest.approx(100.0)
     assert all(name != "(미등록)" for name in backtest["종목명"])
     assert (guide["현재 수량"] == 0).all()  # 코드에 실제 보유 수량을 넣지 않는다
@@ -242,8 +242,49 @@ def test_tab2_reports_start_after_end_with_a_clear_message(run_app):
 
 
 def test_unexpected_errors_are_labeled_differently_from_input_errors(run_app, monkeypatch):
-    import custom_backtest  # 앱이 실제로 호출하는 이름(cb.get_stock_data)을 패치한다
+    import market_data  # 앱이 실제로 호출하는 이름(md.get_prices)을 패치한다
     at = run_app()
-    monkeypatch.setattr(custom_backtest, "get_stock_data", lambda *a, **k: (_ for _ in ()).throw(KeyError("boom")))
+    monkeypatch.setattr(market_data, "get_prices", lambda *a, **k: (_ for _ in ()).throw(KeyError("boom")))
     at.button(key="custom_button").click().run()
     assert any("예상하지 못한 오류" in e.value for e in at.error)
+
+
+# ---------- 데이터 계약: 분석 구간, 캐시 (단계 2) ----------
+
+def test_analysis_window_is_shown_and_explains_a_late_starting_ticker(run_app, krx_prices, monkeypatch):
+    import numpy as np
+    import yfinance
+    from fakes import make_download
+    late = krx_prices.copy()
+    late.loc[late.index[:50], "458730.KS"] = np.nan  # 이 종목만 50거래일 늦게 시작
+    monkeypatch.setattr(yfinance, "download", make_download(late))
+    at = run_app()
+    at.button(key="custom_button").click().run()
+    assert errors(at) == [] and not at.error
+    assert any(c.value.startswith("분석 구간:") and "250거래일" in c.value for c in at.caption)
+    assert any("458730.KS" in i.value and "분석 시작일" in i.value for i in at.info)
+
+
+def test_missing_days_are_reported_when_excluded(run_app, krx_prices, monkeypatch):
+    import numpy as np
+    import yfinance
+    from fakes import make_download
+    gappy = krx_prices.copy()
+    gappy.loc[gappy.index[100], "411060.KS"] = np.nan  # 중간 하루 결측
+    monkeypatch.setattr(yfinance, "download", make_download(gappy))
+    at = run_app()
+    at.button(key="custom_button").click().run()
+    assert errors(at) == [] and not at.error
+    assert any("1거래일은 제외" in w.value for w in at.warning)
+
+
+def test_price_downloads_are_shared_between_tabs_through_the_cache(run_app, krx_prices, monkeypatch):
+    import yfinance
+    from fakes import make_download
+    calls = []
+    monkeypatch.setattr(yfinance, "download", make_download(krx_prices, calls))
+    at = run_app()
+    at.button(key="custom_button").click().run()   # 탭2: 기본 6종목, 기본 기간
+    at.sidebar.button(key="tab1_button").click().run()  # 탭1: 같은 티커·기간
+    history_calls = [c for c in calls if "start" in c]
+    assert len(history_calls) == 1  # 두 탭이 같은 요청을 한 번만 보냈다

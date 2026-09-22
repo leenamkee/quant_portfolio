@@ -8,13 +8,14 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_FILES = [
-    "app_advanced.py", "auth.py", "portfolio_engine.py", "rebalance_engine.py",
-    "custom_backtest.py", "rebalancing_guide.py", "portfolio_store.py",
+    "app_advanced.py", "alignment.py", "auth.py", "config.py", "custom_backtest.py", "errors.py", "market_data.py",
+    "portfolio_engine.py", "portfolio_store.py", "rebalance_engine.py", "rebalancing_guide.py", "validation.py",
 ]
 APP_MODULES = [f[:-3] for f in APP_FILES]
 
 sys.path.insert(0, os.path.join(ROOT, "tests"))
 from fakes import make_download  # noqa: E402
+import market_data  # noqa: E402  (테스트 파일이 import하는 것과 같은 모듈 객체. app_env가 sys.modules를 비워도 이 참조는 유지된다)
 
 
 def _random_walk(columns, periods=300, seed=42, start="2024-01-02"):
@@ -22,6 +23,14 @@ def _random_walk(columns, periods=300, seed=42, start="2024-01-02"):
     rng = np.random.default_rng(seed)
     rets = rng.normal(0.0004, 0.01, size=(periods, len(columns)))
     return pd.DataFrame(100 * np.cumprod(1 + rets, axis=0), index=idx, columns=columns)
+
+
+@pytest.fixture(autouse=True)
+def _clear_market_data_cache():
+    """시세 캐시는 프로세스 전역이라 테스트 사이에 공유되지 않게 비운다."""
+    market_data.clear_cache()
+    yield
+    market_data.clear_cache()
 
 
 @pytest.fixture
@@ -43,8 +52,8 @@ def gap_prices():
 @pytest.fixture
 def krx_prices():
     """앱 기본 티커 6개에 대한 합성 시세."""
-    import portfolio_engine as pe
-    return _random_walk(sorted(pe.DEFAULT_TARGET_WEIGHTS), seed=7)
+    import config
+    return _random_walk(sorted(config.DEFAULT_TARGET_WEIGHTS), seed=7)
 
 
 @pytest.fixture
