@@ -89,6 +89,8 @@ streamlit run app.py            # 초기 단일 페이지 버전
 - **종료일은 결과에 포함**된다: `market_data.get_prices`가 yfinance의 배타적 종료일에 맞춰 하루를 더해 요청한다. **시세는 `market_data`로만 받는다**(직접 `yf.download`를 호출하지 않는다). 캐시가 있어 같은 종목·기간은 TTL(과거 30분, 현재가 5분) 동안 다시 내려받지 않는다.
 - **결측·정렬 정책(확정 §9-3)**: 모든 종목에 가격이 있는 **공통 관측 구간**만 쓰고, 그 안에서 일부 종목의 가격이 없는 날은 **제외**한다(앞 값으로 채우지 않음). 엔진(`backtest_rebalancing`, `optimize_portfolio`)이 `align_prices`를 스스로 적용하며, 화면은 `show_analysis_window()`로 실제 분석 구간과 늦게 시작한 종목을 보여준다. 수익률은 `pct_change()` 대신 `alignment.daily_returns`를 써서 pandas 버전에 따라 결과가 달라지지 않게 한다.
 - 새 계산 코드는 입력을 `validation.py`로 검사하고 `ValidationError`/`MarketDataError`를 던진다. 앱은 `show_error()`로 종류별로 보여준다. 넓은 `except Exception`으로 삼키거나 빈 값으로 대체하지 않는다.
+- **백테스트 시계열은 시작일(초기 자본)을 첫 점으로 포함**한다(`backtest_rebalancing`). 총수익률·연환산 계산은 이를 전제로 한다(연환산의 분모는 `len(df)-1`, 즉 수익률이 실제로 적용된 일수). 결과 시계열 길이를 가정하는 코드를 새로 짤 때는 "가격 데이터와 같은 길이(시작일 포함)"임을 기억한다.
+- **샤프 지수는 변동성이 `config.VOLATILITY_EPSILON` 미만이면 `NaN`**(정의되지 않음)이다. 화면에 표시할 때는 `config.SHARPE_LABEL`과 `config.format_sharpe()`를 쓰고, `f"{sharpe:.2f}"`처럼 직접 포맷하지 않는다(NaN이 그대로 "nan"으로 보이는 것을 방지).
 - 사용자에게 보이는 숫자·동작을 바꾸는 변경은 `docs/release-notes.md`에 전후 예시와 함께 기록한다.
 - `pypfopt`의 max_sharpe는 과거 평균 수익률에 민감해 특정 종목에 쏠린 비중을 낸다. 결과를 그대로 신뢰하지 말고 참고용으로 다룬다.
 

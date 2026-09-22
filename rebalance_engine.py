@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 
 from alignment import align_prices, daily_returns
+from config import TRADING_DAYS_PER_YEAR, VOLATILITY_EPSILON
 from errors import ValidationError
 from validation import validate_capital, validate_frequency, validate_prices_frame, validate_weights
 
@@ -37,17 +38,19 @@ def backtest_rebalancing(data, initial_weights, rebalance_freq='M', initial_capi
     # 비중 합이 1이 아니면 리밸런싱할 때마다 자산이 줄거나 늘어나므로 정규화한다
     current_weights = current_weights / current_weights.sum()
 
-    portfolio_history = []
+    # 시작일의 초기 자본을 시계열의 첫 점으로 남긴다(A1). 이렇게 해야 총수익률에 첫 거래일의 수익률이
+    # 포함된다: 시작일=초기 자본, 그 다음 거래일부터 수익률을 반영한다.
+    portfolio_history = [{'Date': data.index[0], 'Portfolio Value': initial_capital}]
     dates = returns.index
 
     # 리밸런싱 날짜 설정
     rebalance_dates = get_rebalance_dates(data.index, rebalance_freq)
 
     current_portfolio_value = initial_capital
-    
+
     # 각 자산별 보유 금액
     asset_values = current_portfolio_value * current_weights
-    
+
     for date in dates:
         # 자산 가치 업데이트 (일일 수익률 반영)
         daily_ret = returns.loc[date].values
@@ -74,12 +77,17 @@ def calculate_metrics(history_df):
         raise ValidationError("성과 지표를 계산하려면 포트폴리오 가치가 최소 2일치 필요합니다(가격 데이터 최소 3거래일).")
     df = history_df.copy()
     df['Daily Return'] = df['Portfolio Value'].pct_change()
-    
+
     total_return = (df['Portfolio Value'].iloc[-1] / df['Portfolio Value'].iloc[0]) - 1
-    annualized_return = (1 + total_return) ** (252 / len(df)) - 1
-    annualized_vol = df['Daily Return'].std() * np.sqrt(252)
-    sharpe_ratio = annualized_return / annualized_vol if annualized_vol != 0 else 0
-    
+    # 수익률이 적용된 거래일 수(시계열 첫 점은 초기 자본이라 수익률이 없음). calculate_metrics 진입 시
+    # len(df) >= 2를 이미 보장하므로 이 값은 항상 1 이상이다.
+    applied_days = len(df) - 1
+    annualized_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / applied_days) - 1
+    annualized_vol = df['Daily Return'].std() * np.sqrt(TRADING_DAYS_PER_YEAR)
+    # 변동성이 부동소수 오차 수준(예: 매일 똑같은 비율로만 오르는 포트폴리오)이면 나눗셈이 무의미하게
+    # 커지므로(A3), 정의되지 않음(NaN)으로 처리한다.
+    sharpe_ratio = annualized_return / annualized_vol if annualized_vol >= VOLATILITY_EPSILON else float('nan')
+
     # MDD 계산
     df['Cumulative Max'] = df['Portfolio Value'].cummax()
     df['Drawdown'] = (df['Portfolio Value'] - df['Cumulative Max']) / df['Cumulative Max']

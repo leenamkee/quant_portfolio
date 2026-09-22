@@ -12,8 +12,8 @@ import auth
 import market_data as md
 from alignment import align_prices
 from config import (CAPITAL_STEP, COMPARE_DEFAULT_REBALANCE, DEFAULT_INITIAL_CAPITAL, DEFAULT_LOOKBACK_DAYS,
-                    DEFAULT_REBALANCE, DEFAULT_TARGET_WEIGHTS, REBALANCE_OPTIONS, TICKER_NAMES,
-                    frequency_from_option, rebalance_index)
+                    DEFAULT_REBALANCE, DEFAULT_TARGET_WEIGHTS, REBALANCE_OPTIONS, SHARPE_LABEL, TICKER_NAMES,
+                    format_sharpe, frequency_from_option, rebalance_index)
 from errors import MarketDataError, ValidationError
 
 st.set_page_config(page_title="Quant Portfolio Manager", layout="wide")
@@ -175,7 +175,7 @@ with tab1:
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("총 수익률", f"{metrics['Total Return']:.2%}")
                     col2.metric("연환산 수익률", f"{metrics['Annualized Return']:.2%}")
-                    col3.metric("샤프 지수", f"{metrics['Sharpe Ratio']:.2f}")
+                    col3.metric(SHARPE_LABEL, format_sharpe(metrics['Sharpe Ratio']))
                     col4.metric("최대 낙폭 (MDD)", f"{metrics['Max Drawdown']:.2%}")
                     
                     # 탭 구성
@@ -361,7 +361,7 @@ with tab2:
                     col1, col2, col3, col4 = st.columns(4)
                     col1.metric("총 수익률", f"{metrics['Total Return']:.2%}")
                     col2.metric("연환산 수익률", f"{metrics['Annualized Return']:.2%}")
-                    col3.metric("샤프 지수", f"{metrics['Sharpe Ratio']:.2f}")
+                    col3.metric(SHARPE_LABEL, format_sharpe(metrics['Sharpe Ratio']))
                     col4.metric("최대 낙폭 (MDD)", f"{metrics['Max Drawdown']:.2%}")
                     
                     # 차트
@@ -604,7 +604,7 @@ with tab4:
                                 "총 수익률": f"{m['Total Return']:.2%}",
                                 "연환산 수익률": f"{m['Annualized Return']:.2%}",
                                 "연환산 변동성": f"{m['Annualized Volatility']:.2%}",
-                                "샤프": f"{m['Sharpe Ratio']:.2f}",
+                                "샤프": format_sharpe(m['Sharpe Ratio']),
                                 "MDD": f"{m['Max Drawdown']:.2%}",
                                 "최종 가치(원)": f"{history['Portfolio Value'].iloc[-1]:,.0f}",
                             })

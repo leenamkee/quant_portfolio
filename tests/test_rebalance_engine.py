@@ -38,7 +38,9 @@ def test_no_rebalance_dates_without_frequency():
 def test_backtest_matches_hand_calculation_without_rebalance():
     data = make_prices({"A": [100, 110, 121, 121], "B": [100, 100, 100, 100]})
     history = engine.backtest_rebalancing(data, {"A": 0.5, "B": 0.5}, None, 1000)
-    assert list(history["Portfolio Value"].round(6)) == [1050.0, 1105.0, 1105.0]
+    # 첫 행은 시작일의 초기 자본(A1): 수익률은 그다음 거래일부터 반영된다
+    assert list(history["Portfolio Value"].round(6)) == [1000.0, 1050.0, 1105.0, 1105.0]
+    assert list(history.index) == list(data.index)
 
 
 def rebalance_case():
@@ -48,9 +50,9 @@ def rebalance_case():
 
 def test_monthly_rebalance_restores_target_weights_on_month_end():
     history = engine.backtest_rebalancing(rebalance_case(), {"A": 0.5, "B": 0.5}, None, 1000)
-    assert list(history["Portfolio Value"].round(6)) == [1000.0, 1500.0, 1500.0, 1600.0]
+    assert list(history["Portfolio Value"].round(6)) == [1000.0, 1000.0, 1500.0, 1500.0, 1600.0]
     history = engine.backtest_rebalancing(rebalance_case(), {"A": 0.5, "B": 0.5}, "M", 1000)
-    assert list(history["Portfolio Value"].round(6)) == [1000.0, 1500.0, 1500.0, 1575.0]
+    assert list(history["Portfolio Value"].round(6)) == [1000.0, 1000.0, 1500.0, 1500.0, 1575.0]
 
 
 def test_weights_not_summing_to_one_are_normalized():
@@ -62,7 +64,8 @@ def test_weights_not_summing_to_one_are_normalized():
 def test_backtest_runs_on_synthetic_prices(prices):
     weights = {c: 0.25 for c in prices.columns}
     history = engine.backtest_rebalancing(prices, weights, "Q", 10_000_000)
-    assert len(history) == len(prices) - 1
+    assert len(history) == len(prices)  # 첫 행은 시작일의 초기 자본(A1)
+    assert history["Portfolio Value"].iloc[0] == 10_000_000
     assert history["Portfolio Value"].notna().all()
 
 
@@ -84,33 +87,53 @@ def test_metrics_for_constant_growth_have_zero_volatility():
     assert metrics["Total Return"] == pytest.approx(1.01 ** 5 - 1)
 
 
-@pytest.mark.xfail(reason="A3(신규 확인): 변동성이 부동소수 오차 수준(~1e-17)이면 정확히 0이 아니어서 샤프가 1e15처럼 무의미하게 커진다 (단계 3)")
-def test_sharpe_is_not_absurd_when_volatility_is_numerically_zero():
+def test_sharpe_is_undefined_when_volatility_is_numerically_zero():
+    # 매일 똑같은 비율로만 오르면 변동성이 부동소수 오차 수준(~1e-17)이라 그대로 나누면 샤프가 무의미하게
+    # 커진다(예: 2.8e15). VOLATILITY_EPSILON 미만이면 정의되지 않음(NaN)으로 처리한다.
     sharpe = engine.calculate_metrics(constant_growth_history())["Sharpe Ratio"]
-    assert not np.isfinite(sharpe) or abs(sharpe) < 1e6
+    assert np.isnan(sharpe)
 
 
-@pytest.mark.xfail(reason="A1: 성과 지표가 첫 거래일 수익률을 제외한다 (단계 3에서 수정)")
+def test_sharpe_is_computed_normally_above_the_epsilon():
+    history = pd.DataFrame({"Portfolio Value": [100, 105, 98, 110, 103, 115]},
+                            index=pd.bdate_range("2024-01-01", periods=6))
+    metrics = engine.calculate_metrics(history)
+    assert metrics["Annualized Volatility"] > 1e-3
+    assert not np.isnan(metrics["Sharpe Ratio"])
+    assert metrics["Sharpe Ratio"] == pytest.approx(metrics["Annualized Return"] / metrics["Annualized Volatility"])
+
+
 def test_total_return_includes_first_day_return():
     data = make_prices({"A": [100, 110, 110, 121]})  # 실제 총수익률 +21%
     history = engine.backtest_rebalancing(data, {"A": 1.0}, None, 1000)
     assert engine.calculate_metrics(history)["Total Return"] == pytest.approx(0.21)
 
 
+def test_annualized_return_uses_days_with_an_actual_return_applied():
+    # 첫 행(시작일)은 수익률이 없는 초기 자본이라 연환산의 분모(적용 일수)에서 제외한다
+    history = pd.DataFrame({"Portfolio Value": [100.0, 110.0]}, index=pd.bdate_range("2024-01-01", periods=2))
+    metrics = engine.calculate_metrics(history)
+    assert metrics["Total Return"] == pytest.approx(0.10)
+    assert metrics["Annualized Return"] == pytest.approx(1.10 ** 252 - 1)
+
+
 # ---------- 결측·정렬 정책 (A2, §9-3 확정: 공통 관측 구간, 전방 채움 없음) ----------
 
 def test_backtest_skips_days_with_missing_prices_without_forward_fill(gap_prices):
     history = engine.backtest_rebalancing(gap_prices, {"A": 0.5, "B": 0.5}, None, 1000)
-    assert list(history.index) == [gap_prices.index[4], gap_prices.index[5]]
-    # 공통 구간은 B의 첫 유효일(idx2)부터이고 idx3은 B 가격이 없어 제외 → idx2→idx4의 수익률이 idx4에 반영된다
-    assert history["Portfolio Value"].iloc[0] == pytest.approx(500 * 104 / 102 + 500 * 52 / 50)
+    # 공통 구간은 B의 첫 유효일(idx2)부터 시작하고(A1: 그날의 초기 자본이 첫 행), idx3은 B 가격이
+    # 없어 제외되어 idx2→idx4의 수익률이 idx4에 반영된다
+    assert list(history.index) == [gap_prices.index[2], gap_prices.index[4], gap_prices.index[5]]
+    assert history["Portfolio Value"].iloc[0] == 1000
+    assert history["Portfolio Value"].iloc[1] == pytest.approx(500 * 104 / 102 + 500 * 52 / 50)
 
 
 def test_backtest_starts_at_the_latest_first_valid_date():
     data = make_prices({"A": [100, 101, 102, 103], "B": [np.nan, np.nan, 50, 55]})
     history = engine.backtest_rebalancing(data, {"A": 0.5, "B": 0.5}, None, 1000)
-    assert list(history.index) == [data.index[3]]
-    assert history["Portfolio Value"].iloc[0] == pytest.approx(500 * 103 / 102 + 500 * 55 / 50)
+    assert list(history.index) == [data.index[2], data.index[3]]
+    assert history["Portfolio Value"].iloc[0] == 1000
+    assert history["Portfolio Value"].iloc[1] == pytest.approx(500 * 103 / 102 + 500 * 55 / 50)
 
 
 # ---------- 입력 검증 (A8, 단계 1) ----------
@@ -151,7 +174,7 @@ def test_ticker_without_a_weight_is_rejected_by_name():
 
 def test_extra_weights_for_tickers_not_in_data_are_ignored():
     history = engine.backtest_rebalancing(small_prices(), {"A": 0.5, "B": 0.5, "ZZZ": 0.5}, None, 1000)
-    assert len(history) == 2
+    assert len(history) == 3  # 첫 행은 시작일의 초기 자본(A1)
 
 
 @pytest.mark.parametrize("capital", [0, -100, float("nan")])

@@ -30,6 +30,16 @@ CAPITAL_STEP = 1_000_000
 
 # 성과 지표
 TRADING_DAYS_PER_YEAR = 252
+# 변동성이 이 값보다 작으면 부동소수 오차로 취급해 샤프 지수를 정의하지 않는다(A3: 오차만 있어도 샤프가 폭주하는 문제 방지)
+VOLATILITY_EPSILON = 1e-9
+SHARPE_LABEL = "샤프 지수 (무위험수익률 0% 가정)"
+
+
+def format_sharpe(value):
+    """화면 표시용 샤프 지수 문자열. 정의되지 않으면(변동성이 0에 가까우면) 값 대신 안내 문구를 보여준다."""
+    if value is None or not isinstance(value, (int, float)) or value != value:  # NaN 검사
+        return "정의 안 됨(변동성 0)"
+    return f"{value:.2f}"
 
 # 시세 캐시(프로세스 안의 모든 사용자 세션이 공유). 요청 수를 줄이되 장중 가격이 너무 낡지 않게 한다.
 PRICE_HISTORY_TTL_SECONDS = 1800
