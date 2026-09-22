@@ -43,6 +43,15 @@ streamlit run app_advanced.py
 
 브라우저에서 http://localhost:8501 로 접속합니다. GitHub Codespaces / VS Code Dev Container에서는 `.devcontainer` 설정에 따라 앱이 자동으로 실행됩니다.
 
+## 테스트
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
+
+외부 서비스(Yahoo, GitHub, OAuth)는 호출하지 않고 합성 시세와 가짜 서버를 씁니다. 앱 스모크 테스트는 Streamlit `AppTest`로 실제 스크립트를 임시 폴더에서 실행합니다. 알려진 결함의 기대 동작은 `xfail(strict=True)`로 표시되어 있어(`-ra`로 목록 확인), 결함을 고치면 통과해서 표시를 제거하게 됩니다. CI(GitHub Actions)는 배포와 같은 고정 버전(Python 3.11)으로 같은 테스트를 실행합니다.
+
 ## 프로젝트 구조
 
 ```
@@ -55,6 +64,7 @@ streamlit run app_advanced.py
 ├── rebalancing_guide.py  # 보유 수량 기반 매수/매도 가이드, 거래 비용
 ├── portfolio_store.py    # 포트폴리오·보유 수량 영속화 (GitHub JSON / 로컬 파일)
 ├── auth.py               # Google 로그인 판정, 허용 이메일
+├── tests/                # pytest 테스트 (합성 시세, 가짜 GitHub/Yahoo)
 ├── docs/                 # 리서치/설계 문서
 ├── Agent.md              # 개발자/AI 에이전트용 프로젝트 가이드
 ├── worklog.md            # 작업 기록

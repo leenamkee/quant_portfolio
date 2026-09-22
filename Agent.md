@@ -17,9 +17,11 @@ streamlit run app.py            # 초기 단일 페이지 버전
 ```
 
 - devcontainer(`.devcontainer/devcontainer.json`)는 `app_advanced.py`를 8501 포트로 자동 실행한다.
-- 테스트 스위트, 린터 설정은 없다. 변경 후에는 `python -m py_compile <파일>`로 문법을 확인하고, 가능하면 앱을 직접 띄워 확인한다.
+- **테스트**: `python -m pytest`(설정은 `pytest.ini`, 개발 의존성은 `requirements-dev.txt`). 외부 서비스는 호출하지 않고 `tests/fakes.py`의 가짜 Yahoo·GitHub와 `tests/conftest.py`의 합성 시세를 쓴다. 변경 후에는 테스트를 돌리고, UI를 바꿨다면 앱을 직접 띄워 확인한다. 린터는 아직 없다.
+- **알려진 결함은 `xfail(strict=True)`로 표시**되어 있다(이유에 결함 ID와 수정 단계 기재, 계획은 `docs/refactoring-plan.md`). 결함을 고치면 그 테스트가 통과해 strict 위반으로 실패하므로 **표시를 제거**한다. 새 결함을 발견하면 수정 후 기대 동작을 xfail 테스트로 먼저 남긴다.
+- **검증은 배포 고정 버전으로** 한다(`requirements.txt`). 로컬 Windows + Python 3.13에서는 `ecos`가 빌드되지 않으므로, 그 항목만 뺀 뒤 `pip install --no-deps`로 설치하고 `authlib`를 추가한다(`ecos`는 없어도 최적화가 동작함). 최신 버전(pandas 3.x 등)은 결과가 다를 수 있다(계획서 A2).
 - `requirements.txt`는 UTF-16(BOM) 인코딩이다. 수정 시 인코딩을 유지하거나, 변경하면 pip 설치가 되는지 확인한다.
-- UI 변경은 Streamlit `AppTest`(`streamlit.testing.v1`)로 저장소를 오염시키지 않도록 **임시 복사본**에서 실행해 확인할 수 있다.
+- 앱 스모크 테스트(`tests/test_app_smoke.py`)는 `app_env` fixture가 앱 소스를 **임시 폴더로 복사**해 실행하므로 저장소의 `data/`가 오염되지 않는다. 저장소 폴더 안(`data/` 등)에 파일을 쓰는 테스트를 만들지 않는다(로컬 백엔드의 경로는 모듈 위치 기준이므로, 저장소를 쓰는 테스트는 `tmp_path`의 `LocalBackend` 또는 `app_env`를 사용한다).
 
 ## 파일 구조와 역할
 
@@ -33,6 +35,7 @@ streamlit run app.py            # 초기 단일 페이지 버전
 | `rebalancing_guide.py` | 현재가 조회, 보유 수량 대비 매수/매도 수량 계산, 거래 비용 계산 |
 | `portfolio_store.py` | 영속화. `GitHubBackend`(GitHub Contents API, 별도 `data` 브랜치) / `LocalBackend`(로컬 파일, 개발용). 공용 포트폴리오(`data/portfolios.json`, 작성자 표시·작성자만 수정/삭제)와 사용자별 보유 수량(`users/<해시>.json`)을 다룬다 |
 | `auth.py` | Google 로그인(`st.login`) 판정. 허용 이메일(`ALLOWED_EMAILS`) 검사, 사용자 키(이메일 SHA-256 앞 12자리) 생성. 로그인 설정이 없고 GitHub 저장소만 설정되면 앱을 열지 않는다(fail-closed) |
+| `tests/` | pytest 테스트(엔진·가이드·저장소·인증·앱 스모크), `fakes.py`(가짜 Yahoo·GitHub), `conftest.py`(합성 시세, 격리된 앱 실행 fixture) |
 | `docs/` | `portfolio-storage-research.md`(저장 방식), `multi-user-plan.md`(3~4명 사용 방안), `google-login-setup.md`(로그인·저장소 설정 절차), `refactoring-plan.md`(코드 검토 결과와 단계별 리팩토링 계획, 실행 전), `refactoring-plan-review.md`(그 계획에 대한 검토 의견) |
 | `worklog.md` | 작업 기록 (아래 "작업 규칙" 참고) |
 | `*.md` (루트, 한글 파일명) | 초기 사용 가이드 문서 |

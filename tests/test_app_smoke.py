@@ -1,0 +1,194 @@
+"""앱 스모크 테스트. 실제 Streamlit 스크립트를 임시 복사본에서 AppTest로 실행한다(네트워크 없음).
+
+AppTest의 한계: data_editor 셀 직접 편집은 시뮬레이션할 수 없어 세션 상태의 표를 직접 세팅하고,
+selectbox는 선택지가 바뀐 뒤 select()가 실패할 수 있어 위젯 키에 값을 직접 대입한다.
+"""
+import json
+import os
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+
+def errors(at):
+    return [e.value for e in at.exception]
+
+
+AUTH_SECRETS = {
+    "auth": {"redirect_uri": "http://localhost:8501/oauth2callback", "cookie_secret": "x", "client_id": "i",
+             "client_secret": "s", "server_metadata_url": "https://accounts.google.com/.well-known/openid-configuration"},
+    "ALLOWED_EMAILS": ["a@gmail.com"],
+}
+
+
+# ---------- 접근 제어 ----------
+
+def test_dev_mode_boots_with_four_tabs(run_app):
+    at = run_app()
+    assert errors(at) == []
+    assert len(at.tabs) == 4
+    assert any("로컬 개발 모드" in c.value for c in at.sidebar.caption)
+
+
+def test_login_screen_is_shown_when_auth_is_configured(run_app):
+    at = run_app(AUTH_SECRETS)
+    assert errors(at) == []
+    assert [b.label for b in at.button] == ["Google로 로그인"]
+    assert len(at.tabs) == 0
+
+
+def test_github_store_without_auth_is_blocked(run_app):
+    at = run_app({"GITHUB_TOKEN": "t", "GITHUB_REPO": "o/r"})
+    assert errors(at) == []
+    assert len(at.tabs) == 0
+    assert any("로그인" in e.value for e in at.error)
+
+
+# ---------- 기본 화면 값 ----------
+
+def test_default_tables_use_default_portfolio(run_app):
+    import portfolio_engine as pe
+    at = run_app()
+    backtest, guide = at.session_state["bt_table"], at.session_state["rb_table"]
+    assert list(backtest["티커"]) == list(pe.DEFAULT_TARGET_WEIGHTS)
+    assert backtest["비중(%)"].sum() == pytest.approx(100.0)
+    assert all(name != "(미등록)" for name in backtest["종목명"])
+    assert (guide["현재 수량"] == 0).all()  # 코드에 실제 보유 수량을 넣지 않는다
+
+
+# ---------- 탭1: 자동 최적화 ----------
+
+def test_tab1_optimization_runs(run_app):
+    at = run_app()
+    at.sidebar.button(key="tab1_button").click().run()
+    assert errors(at) == [] and not at.error
+    assert [m.label for m in at.metric][:2] == ["총 수익률", "연환산 수익률"]
+
+
+# ---------- 탭2: 사용자 정의 백테스트 ----------
+
+def test_tab2_backtest_runs_with_default_table(run_app):
+    at = run_app()
+    at.button(key="custom_button").click().run()
+    assert errors(at) == [] and not at.error
+    assert len(at.metric) >= 4
+
+
+def test_tab2_empty_table_shows_error_instead_of_running(run_app):
+    at = run_app()
+    table = at.session_state["bt_table"].copy()
+    table["비중(%)"] = 0.0
+    at.session_state["bt_table"] = table
+    at.run()
+    at.button(key="custom_button").click().run()
+    assert errors(at) == []
+    assert any("비중이 0보다 큰 종목이 없습니다" in e.value for e in at.error)
+
+
+def test_tab2_save_then_load_portfolio(run_app):
+    at = run_app()
+    at.text_input(key="save_name").set_value("안A").run()
+    at.button(key="save_portfolio_button").click().run()
+    assert errors(at) == []
+    saved = at.session_state["saved_portfolios"]
+    assert [p["name"] for p in saved] == ["안A"] and saved[0]["owner_name"] == "로컬 사용자"
+
+    table = at.session_state["bt_table"].copy()
+    table.loc[table["티커"] == "360750.KS", "비중(%)"] = 35.0
+    table.loc[table["티커"] == "273130.KS", "비중(%)"] = 20.0
+    at.session_state["bt_table"] = table
+    at.run()
+    at.session_state["bt_load_select"] = saved[0]["id"]
+    at.run()
+    at.button(key="bt_load_button").click().run()
+    loaded = at.session_state["bt_table"]
+    assert float(loaded.loc[loaded["티커"] == "360750.KS", "비중(%)"].iloc[0]) == 25.0
+    assert at.text_input(key="save_name").value == "안A"
+
+
+def test_tab2_rejects_saving_when_weights_do_not_sum_to_100(run_app):
+    at = run_app()
+    table = at.session_state["bt_table"].copy()
+    table.loc[0, "비중(%)"] = 10.0
+    at.session_state["bt_table"] = table
+    at.run()
+    at.text_input(key="save_name").set_value("합계불일치").run()
+    at.button(key="save_portfolio_button").click().run()
+    assert at.session_state["saved_portfolios"] == []
+    assert any("100%로 맞춘 뒤 저장" in e.value for e in at.error)
+
+
+def test_tab2_add_and_remove_ticker_rows(run_app):
+    at = run_app()
+    at.text_input(key="bt_new_0").set_value("069500").run()
+    at.button(key="bt_add_button").click().run()
+    table = at.session_state["bt_table"]
+    assert list(table["티커"])[-1] == "069500.KS" and table["종목명"].iloc[-1] == "(미등록)"
+    version = at.session_state["bt_version"]
+    at.multiselect(key=f"bt_remove_{version}").set_value(["069500.KS"]).run()
+    at.button(key="bt_remove_button").click().run()
+    assert "069500.KS" not in list(at.session_state["bt_table"]["티커"])
+
+
+# ---------- 탭3: 리밸런싱 가이드 ----------
+
+def test_tab3_generates_guide_with_names(run_app):
+    at = run_app()
+    table = at.session_state["rb_table"].copy()
+    for ticker, shares in {"360750.KS": 100, "411060.KS": 50, "273130.KS": 10}.items():
+        table.loc[table["티커"] == ticker, "현재 수량"] = shares
+    at.session_state["rb_table"] = table
+    at.run()
+    at.button(key="rebalancing_button").click().run()
+    assert errors(at) == [] and not at.error
+    frames = [d.value for d in at.dataframe if {"Ticker", "종목명"} <= set(d.value.columns)]
+    assert frames and "TIGER 미국S&P500" in set(frames[0]["종목명"])
+    assert list(frames[0]["Ticker"]) == list(table["티커"])  # 입력 순서 유지
+
+
+def test_tab3_warns_when_all_holdings_are_zero(run_app):
+    at = run_app()
+    at.button(key="rebalancing_button").click().run()
+    assert errors(at) == []
+    assert any("보유 수량이 모두 0" in w.value for w in at.warning)
+
+
+def test_tab3_holdings_are_saved_per_user_and_reloaded(run_app):
+    at = run_app()
+    table = at.session_state["rb_table"].copy()
+    table.loc[table["티커"] == "360750.KS", "현재 수량"] = 120
+    at.session_state["rb_table"] = table
+    at.run()
+    at.button(key="save_holdings_button").click().run()
+    assert any("보유 수량을 저장했습니다" in s.value for s in at.success)
+
+    fresh = run_app()  # 새 세션
+    reloaded = fresh.session_state["rb_table"]
+    assert int(reloaded.loc[reloaded["티커"] == "360750.KS", "현재 수량"].iloc[0]) == 120
+    users_dir = os.path.join(run_app.app_env, "data", "users")
+    assert len(os.listdir(users_dir)) == 1  # 이메일이 아닌 해시 파일명
+    assert "@" not in os.listdir(users_dir)[0]
+
+
+# ---------- 탭4: 비교 ----------
+
+def test_tab4_compares_saved_portfolios(run_app):
+    at = run_app()
+    for name in ("안A", "안B"):
+        at.text_input(key="save_name").set_value(name).run()
+        at.button(key="save_portfolio_button").click().run()
+    at.button(key="compare_button").click().run()
+    assert errors(at) == [] and not at.error
+    metrics = at.dataframe[-1].value
+    assert list(metrics["포트폴리오"]) == ["안A", "안B"]
+
+
+def test_tab4_delete_removes_only_selected(run_app):
+    at = run_app()
+    for name in ("안A", "안B"):
+        at.text_input(key="save_name").set_value(name).run()
+        at.button(key="save_portfolio_button").click().run()
+    first = at.session_state["saved_portfolios"][0]["id"]
+    at.multiselect(key="delete_selected").set_value([first]).run()
+    at.button(key="delete_button").click().run()
+    assert [p["name"] for p in at.session_state["saved_portfolios"]] == ["안B"]
