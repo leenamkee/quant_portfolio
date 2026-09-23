@@ -120,14 +120,14 @@ def test_tab2_rejects_saving_when_weights_do_not_sum_to_100(run_app):
 
 def test_tab2_add_and_remove_ticker_rows(run_app):
     at = run_app()
-    at.text_input(key="bt_new_0").set_value("069500").run()
+    at.text_input(key="bt_new_0").set_value("999999").run()
     at.button(key="bt_add_button").click().run()
     table = at.session_state["bt_table"]
-    assert list(table["티커"])[-1] == "069500.KS" and table["종목명"].iloc[-1] == "(미등록)"
+    assert list(table["티커"])[-1] == "999999.KS" and table["종목명"].iloc[-1] == "(미등록)"
     version = at.session_state["bt_version"]
-    at.multiselect(key=f"bt_remove_{version}").set_value(["069500.KS"]).run()
+    at.multiselect(key=f"bt_remove_{version}").set_value(["999999.KS"]).run()
     at.button(key="bt_remove_button").click().run()
-    assert "069500.KS" not in list(at.session_state["bt_table"]["티커"])
+    assert "999999.KS" not in list(at.session_state["bt_table"]["티커"])
 
 
 def test_tab2_new_ticker_name_is_filled_in_from_yfinance_when_available(run_app, monkeypatch):

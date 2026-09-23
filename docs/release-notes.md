@@ -2,6 +2,18 @@
 
 사용자에게 보이는 동작이 바뀌는 변경을 기록한다(계획: [refactoring-plan.md](refactoring-plan.md) §5). 최신이 위에 온다.
 
+## 2026-09-24 — 종목명 5개 추가
+
+`config.TICKER_NAMES`에 다음 5개 국내 ETF의 한글명을 등록했다(연금계좌 자산배분 리서치 포트폴리오를 가져와 쓰면서 필요해짐). 이 종목들은 이제 yfinance API 보완 없이 바로 한글명이 표시된다.
+
+| 티커 | 종목명 |
+|---|---|
+| 069500.KS | KODEX 200 |
+| 305080.KS | TIGER 미국채10년선물 |
+| 132030.KS | KODEX 골드선물(H) |
+| 114260.KS | KODEX 국고채3년 |
+| 329200.KS | TIGER 리츠부동산인프라 |
+
 ## 2026-09-22 — 등록되지 않은 종목명을 yfinance로 보완
 
 - `config.py`의 `TICKER_NAMES`(국내 ETF 6종)에 없는 티커를 표에 추가하면(예: 미국 상장 ETF를 백업 JSON으로 가져온 뒤 종목 추가) 예전에는 종목명이 항상 `(미등록)`으로 나왔다. 이제 yfinance에서 받은 이름(`longName`, 예: "Vanguard Total Stock Market ETF")을 대신 보여준다. 이름을 못 받으면 계속 `(미등록)`이다.
