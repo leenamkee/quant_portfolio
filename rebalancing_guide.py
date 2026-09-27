@@ -4,28 +4,29 @@ import numpy as np
 import pandas as pd
 
 from errors import ValidationError
-from validation import validate_holdings, validate_weights
+from validation import validate_extra_cash, validate_holdings, validate_weights
 
 
 def _is_valid_price(price):
     return isinstance(price, (int, float, np.floating)) and not isinstance(price, bool) and math.isfinite(price) and price > 0
 
 
-def _prepare(current_holdings, target_weights, current_prices):
+def _prepare(current_holdings, target_weights, current_prices, extra_cash=0):
     """
     입력을 검사하고 정리합니다. 보유 수량이나 목표 비중이 있는 종목의 가격이 없거나 올바르지 않으면
     다른 종목의 매매 안내를 왜곡하므로 계산하지 않고 ValidationError를 발생시킵니다.
     """
     holdings = validate_holdings(current_holdings)
     weights = validate_weights(target_weights, "목표 비중")
+    extra_cash = validate_extra_cash(extra_cash)
     needed = [t for t in dict.fromkeys(list(holdings) + list(weights)) if holdings.get(t, 0) > 0 or weights.get(t, 0) > 0]
     bad = [t for t in needed if not _is_valid_price(current_prices.get(t))]
     if bad:
         raise ValidationError(f"가격을 알 수 없는 종목이 있어 리밸런싱을 계산할 수 없습니다: {', '.join(bad)}")
-    return holdings, weights
+    return holdings, weights, extra_cash
 
 
-def calculate_rebalancing_guide(current_holdings, target_weights, current_prices):
+def calculate_rebalancing_guide(current_holdings, target_weights, current_prices, extra_cash=0):
     """
     현재 보유 수량과 목표 가중치를 기반으로 리밸런싱 가이드를 생성합니다.
 
@@ -33,13 +34,15 @@ def calculate_rebalancing_guide(current_holdings, target_weights, current_prices
     - current_holdings: 현재 보유 수량 (dict: {ticker: shares})
     - target_weights: 목표 가중치 (dict: {ticker: weight}), 합이 1이 아니어도 비율에 맞춰 정규화
     - current_prices: 현재 주가 (dict: {ticker: price})
+    - extra_cash: 리밸런싱과 함께 추가로 투자할 금액(0 이상). 현재 포트폴리오 가치에 더한 금액을
+      목표 비중대로 나누므로, 새 돈이 비중이 낮은 종목에 먼저 들어가는 효과가 있다.
 
     Returns:
     - rebalancing_df: 리밸런싱 가이드 DataFrame
 
     입력이 올바르지 않거나 필요한 종목의 가격이 없으면 ValidationError를 발생시킵니다.
     """
-    current_holdings, target_weights = _prepare(current_holdings, target_weights, current_prices)
+    current_holdings, target_weights, extra_cash = _prepare(current_holdings, target_weights, current_prices, extra_cash)
 
     # 현재 포트폴리오 가치 계산
     current_values = {}
@@ -50,6 +53,9 @@ def calculate_rebalancing_guide(current_holdings, target_weights, current_prices
         value = shares * price
         current_values[ticker] = value
         total_value += value
+
+    # 목표 배분 대상 금액(현재 가치 + 추가 투자금)
+    total_investable = total_value + extra_cash
 
     # 목표 가중치 정규화
     total_weight = sum(target_weights.values())
@@ -66,7 +72,7 @@ def calculate_rebalancing_guide(current_holdings, target_weights, current_prices
         current_value = current_values.get(ticker, 0)
 
         target_weight = normalized_weights.get(ticker, 0)
-        target_value = total_value * target_weight
+        target_value = total_investable * target_weight
 
         # 필요한 변화량 (보유도 목표도 없는 종목은 가격이 없어도 변화 0)
         value_diff = target_value - current_value
@@ -97,17 +103,18 @@ def calculate_rebalancing_guide(current_holdings, target_weights, current_prices
     return rebalancing_df, total_value, total_cash_needed
 
 
-def calculate_rebalancing_cost(current_holdings, target_weights, current_prices, transaction_cost_pct=0.001):
+def calculate_rebalancing_cost(current_holdings, target_weights, current_prices, extra_cash=0, transaction_cost_pct=0.001):
     """
     리밸런싱에 필요한 거래 비용을 계산합니다.
 
     Parameters:
+    - extra_cash: calculate_rebalancing_guide와 같은 추가 투자금(0 이상)
     - transaction_cost_pct: 거래 수수료 비율 (기본값 0.1%)
 
     Returns:
     - total_cost: 총 거래 비용
     """
-    current_holdings, target_weights = _prepare(current_holdings, target_weights, current_prices)
+    current_holdings, target_weights, extra_cash = _prepare(current_holdings, target_weights, current_prices, extra_cash)
 
     current_values = {}
     total_value = 0
@@ -118,6 +125,8 @@ def calculate_rebalancing_cost(current_holdings, target_weights, current_prices,
         current_values[ticker] = value
         total_value += value
 
+    total_investable = total_value + extra_cash
+
     # 목표 가중치 정규화
     total_weight = sum(target_weights.values())
     normalized_weights = {ticker: w / total_weight for ticker, w in target_weights.items()}
@@ -127,7 +136,7 @@ def calculate_rebalancing_cost(current_holdings, target_weights, current_prices,
     for ticker in dict.fromkeys(list(current_holdings.keys()) + list(target_weights.keys())):
         current_value = current_values.get(ticker, 0)
         target_weight = normalized_weights.get(ticker, 0)
-        target_value = total_value * target_weight
+        target_value = total_investable * target_weight
 
         value_diff = abs(target_value - current_value)
         total_transaction_value += value_diff

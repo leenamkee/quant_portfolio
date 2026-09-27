@@ -168,6 +168,26 @@ def test_tab3_warns_when_all_holdings_are_zero(run_app):
     assert any("보유 수량이 모두 0" in w.value for w in at.warning)
 
 
+def test_tab3_extra_cash_avoids_the_zero_holdings_warning(run_app):
+    at = run_app()
+    at.number_input(key="rb_extra_cash").set_value(1_000_000).run()
+    at.button(key="rebalancing_button").click().run()
+    assert errors(at) == [] and not at.error
+    assert not any("보유 수량이 모두 0" in w.value for w in at.warning)
+
+
+def test_tab3_extra_cash_is_folded_into_the_allocation_target(run_app):
+    at = run_app()
+    table = at.session_state["rb_table"].copy()
+    table.loc[table["티커"] == "360750.KS", "현재 수량"] = 100
+    at.session_state["rb_table"] = table
+    at.run()
+    at.number_input(key="rb_extra_cash").set_value(5_000_000).run()
+    at.button(key="rebalancing_button").click().run()
+    assert errors(at) == [] and not at.error
+    assert any("추가 투자금" in c.value for c in at.caption)
+
+
 def test_tab3_holdings_are_saved_per_user_and_reloaded(run_app):
     at = run_app()
     table = at.session_state["rb_table"].copy()

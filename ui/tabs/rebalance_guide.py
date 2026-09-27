@@ -5,7 +5,7 @@ import streamlit as st
 import market_data as md
 import rebalancing_guide as rg
 import storage as ps
-from config import DEFAULT_TARGET_WEIGHTS
+from config import CAPITAL_STEP, DEFAULT_TARGET_WEIGHTS
 from ui import state
 from ui.components import row_controls, show_error, ticker_name, ticker_table_editor
 
@@ -27,7 +27,7 @@ def _default_table(user_store):
     })
 
 
-def _render_guide(current_holdings, target_weights):
+def _render_guide(current_holdings, target_weights, extra_cash):
     with st.spinner("리밸런싱 가이드를 생성 중입니다..."):
         try:
             tickers_for_prices = list(dict.fromkeys(list(current_holdings) + list(target_weights)))
@@ -37,22 +37,24 @@ def _render_guide(current_holdings, target_weights):
             if not current_prices:
                 st.error(f"현재가를 얻지 못했습니다: {', '.join(latest.missing)}")
                 return
-            if sum(current_holdings.values()) == 0:
-                st.warning("보유 수량이 모두 0입니다. 현재 보유 수량을 입력한 뒤 다시 생성하세요.")
+            if sum(current_holdings.values()) == 0 and extra_cash == 0:
+                st.warning("보유 수량이 모두 0이고 추가 투자금도 없습니다. 보유 수량이나 추가 투자금을 입력한 뒤 다시 생성하세요.")
                 return
             if sum(target_weights.values()) == 0:
                 st.error("목표 비중 합계가 0%입니다. 목표 비중을 입력한 뒤 다시 생성하세요.")
                 return
 
             rebalancing_df, total_value, cash_needed = rg.calculate_rebalancing_guide(
-                current_holdings, target_weights, current_prices)
-            transaction_cost = rg.calculate_rebalancing_cost(current_holdings, target_weights, current_prices)
+                current_holdings, target_weights, current_prices, extra_cash)
+            transaction_cost = rg.calculate_rebalancing_cost(current_holdings, target_weights, current_prices, extra_cash)
 
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("포트폴리오 총 가치", f"{total_value:,.0f}원")
             col2.metric("필요한 현금", f"{max(0, cash_needed):,.0f}원")
             col3.metric("예상 거래 비용", f"{transaction_cost:,.0f}원")
             col4.metric("순 현금 필요", f"{max(0, cash_needed) + transaction_cost:,.0f}원")
+            if extra_cash > 0:
+                st.caption(f"목표 비중은 현재 가치 + 추가 투자금 {extra_cash:,.0f}원 = {total_value + extra_cash:,.0f}원을 기준으로 배분합니다.")
 
             price_dates = latest.distinct_dates()
             st.caption("가격 기준: 마지막 거래일 종가 (" + ", ".join(str(d) for d in price_dates) + ")")
@@ -121,7 +123,11 @@ def render(ctx):
         except ps.StoreError as e:
             st.error(f"저장 실패: {e}")
 
+    extra_cash = st.number_input(
+        "추가 투자금 (원)", value=0, min_value=0, step=CAPITAL_STEP, key="rb_extra_cash",
+        help="이번 리밸런싱과 함께 새로 넣을 금액. 없으면 0입니다. 목표 비중이 낮은 종목에 먼저 배분됩니다.")
+
     if st.button("리밸런싱 가이드 생성", key="rebalancing_button"):
-        _render_guide(current_holdings, target_weights)
+        _render_guide(current_holdings, target_weights, extra_cash)
     else:
         st.info("현재 보유 수량과 목표 비중을 입력하고 '리밸런싱 가이드 생성' 버튼을 눌러주세요.")

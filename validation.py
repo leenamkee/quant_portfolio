@@ -48,6 +48,13 @@ def validate_capital(capital):
     return capital
 
 
+def validate_extra_cash(value):
+    """리밸런싱 시 추가로 투자할 금액을 검사한다. 없으면 0(음수=출금은 지원하지 않음)."""
+    if not _is_number(value) or value < 0:
+        raise ValidationError(f"추가 투자금은 0 이상이어야 합니다: {value!r}")
+    return value
+
+
 def validate_frequency(freq):
     if freq not in REBALANCE_FREQUENCIES:
         raise ValidationError(f"리밸런싱 주기는 None, 'M', 'Q', 'Y' 중 하나여야 합니다: {freq!r}")

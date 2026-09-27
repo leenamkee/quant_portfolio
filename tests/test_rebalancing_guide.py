@@ -56,6 +56,43 @@ def test_rebalancing_cost_is_half_of_traded_value_times_rate():
     assert cost == pytest.approx(0.5)  # (500 + 500) / 2 * 0.1%
 
 
+# ---------- 추가 투자금 ----------
+
+def test_extra_cash_is_added_to_the_allocation_target():
+    # 현재 2,000원(A 10주 · B 10주, 각 100원) + 추가 1,000원 = 3,000원을 50:50으로 배분 → 각 1,500원
+    df, total, cash = guide.calculate_rebalancing_guide(
+        {"A": 10, "B": 10}, {"A": 0.5, "B": 0.5}, {"A": 100, "B": 100}, extra_cash=1000)
+    assert trades(df) == {"A": 5, "B": 5}
+    assert total == 2000  # 보고되는 "포트폴리오 총 가치"는 추가 투자금을 뺀 현재 보유 가치
+    assert cash == pytest.approx(1000)
+
+
+def test_extra_cash_fills_underweight_tickers_before_forcing_a_sell():
+    # 현재 A만 1,000원 보유, 목표는 50:50. 추가 1,000원을 더하면 총 2,000원 중 B가 1,000원 필요하고
+    # 추가 투자금만으로 정확히 채워져 A를 매도할 필요가 없다.
+    df, _, cash = guide.calculate_rebalancing_guide(
+        {"A": 10, "B": 0}, {"A": 0.5, "B": 0.5}, {"A": 100, "B": 100}, extra_cash=1000)
+    assert trades(df) == {"A": 0, "B": 10}
+    assert cash == pytest.approx(1000)
+
+
+def test_extra_cash_defaults_to_zero():
+    with_default = guide.calculate_rebalancing_guide({"A": 10, "B": 0}, {"A": 0.5, "B": 0.5}, {"A": 100, "B": 100})
+    explicit_zero = guide.calculate_rebalancing_guide({"A": 10, "B": 0}, {"A": 0.5, "B": 0.5}, {"A": 100, "B": 100}, extra_cash=0)
+    assert trades(with_default[0]) == trades(explicit_zero[0])
+
+
+def test_negative_extra_cash_is_rejected():
+    with pytest.raises(ValidationError, match="추가 투자금"):
+        guide.calculate_rebalancing_guide({"A": 10}, {"A": 1.0}, {"A": 100}, extra_cash=-1)
+
+
+def test_rebalancing_cost_grows_with_extra_cash():
+    without = guide.calculate_rebalancing_cost({"A": 10, "B": 10}, {"A": 0.5, "B": 0.5}, {"A": 100, "B": 100})
+    with_extra = guide.calculate_rebalancing_cost({"A": 10, "B": 10}, {"A": 0.5, "B": 0.5}, {"A": 100, "B": 100}, extra_cash=1000)
+    assert with_extra > without
+
+
 # ---------- 입력·가격 검증 (A5, A8, 단계 1) ----------
 
 def test_missing_price_for_held_ticker_is_an_error_naming_the_ticker():
