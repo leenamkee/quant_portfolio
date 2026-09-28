@@ -6,6 +6,7 @@ import portfolio_engine as pe
 import rebalance_engine as backtest_engine
 from alignment import align_prices
 from config import DEFAULT_TARGET_WEIGHTS, SHARPE_LABEL, format_sharpe
+from ui import state
 from ui.charts import allocation_chart, performance_charts, price_data_section
 from ui.components import backtest_settings, show_analysis_window, show_error, ticker_name
 
@@ -13,9 +14,25 @@ DEFAULT_TICKERS = ", ".join(sorted(DEFAULT_TARGET_WEIGHTS))
 OPTIMIZATION_METHODS = ["max_sharpe", "min_volatility", "equal_weight", "target_weight"]
 
 
+def _render_load_controls():
+    saved_list = st.session_state[state.SAVED_PORTFOLIOS]
+    saved_labels = {p["id"]: f"{p['name']} · {p.get('owner_name') or '작성자 없음'}" for p in saved_list}
+    col1, col2 = st.columns([3, 1])
+    load_id = col1.selectbox(
+        "저장된 포트폴리오에서 티커 불러오기", list(saved_labels), format_func=saved_labels.get, index=None,
+        placeholder="저장된 포트폴리오를 선택하세요" if saved_list else "저장된 포트폴리오가 없습니다", key="tab1_load_select",
+    )
+    col2.write("")
+    if col2.button("불러오기", key="tab1_load_button", disabled=load_id is None):
+        chosen = next(p for p in saved_list if p["id"] == load_id)
+        st.session_state["tab1_tickers"] = ", ".join(chosen["tickers"])
+        st.rerun()
+
+
 def render(ctx):
     st.header("자동 포트폴리오 최적화")
 
+    _render_load_controls()
     tickers_input = st.text_input("티커 입력 (쉼표로 구분)", DEFAULT_TICKERS, key="tab1_tickers")
     tickers = [t.strip() for t in tickers_input.split(",")]
 

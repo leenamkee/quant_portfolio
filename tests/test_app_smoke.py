@@ -65,6 +65,18 @@ def test_tab1_optimization_runs(run_app):
     assert [m.label for m in at.metric][:2] == ["총 수익률", "연환산 수익률"]
 
 
+def test_tab1_loads_tickers_from_a_saved_portfolio(run_app):
+    at = run_app()
+    at.text_input(key="save_name").set_value("최적화용").run()
+    at.button(key="save_portfolio_button").click().run()
+    saved = at.session_state["saved_portfolios"][0]
+
+    at.session_state["tab1_load_select"] = saved["id"]
+    at.run()
+    at.button(key="tab1_load_button").click().run()
+    assert at.text_input(key="tab1_tickers").value == ", ".join(saved["tickers"])
+
+
 # ---------- 탭2: 사용자 정의 백테스트 ----------
 
 def test_tab2_backtest_runs_with_default_table(run_app):
@@ -188,18 +200,20 @@ def test_tab3_extra_cash_is_folded_into_the_allocation_target(run_app):
     assert any("추가 투자금" in c.value for c in at.caption)
 
 
-def test_tab3_holdings_are_saved_per_user_and_reloaded(run_app):
+def test_tab3_holdings_and_target_weights_are_saved_per_user_and_reloaded(run_app):
     at = run_app()
     table = at.session_state["rb_table"].copy()
     table.loc[table["티커"] == "360750.KS", "현재 수량"] = 120
+    table.loc[table["티커"] == "360750.KS", "목표 비중(%)"] = 40.0
     at.session_state["rb_table"] = table
     at.run()
     at.button(key="save_holdings_button").click().run()
-    assert any("보유 수량을 저장했습니다" in s.value for s in at.success)
+    assert any("현재 수량과 목표 비중을 저장했습니다" in s.value for s in at.success)
 
     fresh = run_app()  # 새 세션
     reloaded = fresh.session_state["rb_table"]
     assert int(reloaded.loc[reloaded["티커"] == "360750.KS", "현재 수량"].iloc[0]) == 120
+    assert float(reloaded.loc[reloaded["티커"] == "360750.KS", "목표 비중(%)"].iloc[0]) == pytest.approx(40.0)
     users_dir = os.path.join(run_app.app_env, "data", "users")
     assert len(os.listdir(users_dir)) == 1  # 이메일이 아닌 해시 파일명
     assert "@" not in os.listdir(users_dir)[0]

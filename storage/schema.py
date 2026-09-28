@@ -42,10 +42,12 @@ def load_portfolios_document(raw):
 
 
 def load_holdings_document(raw):
-    """load_portfolios_document과 같은 방식으로 보유 수량 문서를 검사한다."""
+    """load_portfolios_document과 같은 방식으로 보유 수량(+목표 비중) 문서를 검사한다."""
     if raw == {}:
         return empty_holdings_document()
     if not isinstance(raw, dict) or not isinstance(raw.get("holdings", {}), dict):
         raise StoreError("저장된 보유 수량 데이터 형식이 올바르지 않습니다.")
+    if not isinstance(raw.get("target_weights", {}), dict):
+        raise StoreError("저장된 목표 비중 데이터 형식이 올바르지 않습니다.")
     raw.setdefault("schema_version", SCHEMA_VERSION)
     return raw

@@ -89,10 +89,10 @@ def test_import_validation_rejects_malformed_backups(bad):
         ps.validate_import(bad)
 
 
-# ---------- 보유 수량 ----------
+# ---------- 보유 수량 · 목표 비중 ----------
 
 def test_holdings_round_trip_and_do_not_store_portfolios_key(local):
-    ps.save_holdings(local, {"360750.KS": 3221, "411060.KS": 0})
+    ps.save_holdings(local, {"360750.KS": 3221, "411060.KS": 0}, {})
     assert ps.load_holdings(local) == {"360750.KS": 3221, "411060.KS": 0}
     assert "portfolios" not in json.load(open(local.path, encoding="utf-8"))
 
@@ -100,7 +100,33 @@ def test_holdings_round_trip_and_do_not_store_portfolios_key(local):
 @pytest.mark.parametrize("bad", [{"X": -1}, {"X": 1.5}, {"X": "3"}, {"X": True and 2.0}])
 def test_holdings_must_be_non_negative_integers(local, bad):
     with pytest.raises(ps.StoreError):
-        ps.save_holdings(local, bad)
+        ps.save_holdings(local, bad, {})
+
+
+def test_target_weights_round_trip_alongside_holdings(local):
+    ps.save_holdings(local, {"A": 10}, {"A": 0.6, "B": 0.4})
+    holdings, weights = ps.load_user_data(local)
+    assert holdings == {"A": 10} and weights == {"A": 0.6, "B": 0.4}
+
+
+@pytest.mark.parametrize("bad", [{"X": -1}, {"X": "n/a"}, {"X": None}])
+def test_target_weights_must_be_non_negative_numbers(local, bad):
+    with pytest.raises(ps.StoreError):
+        ps.save_holdings(local, {}, bad)
+
+
+def test_saving_again_replaces_previous_target_weights(local):
+    ps.save_holdings(local, {"A": 10}, {"A": 1.0})
+    ps.save_holdings(local, {"A": 10}, {"A": 0.5, "B": 0.5})
+    _, weights = ps.load_user_data(local)
+    assert weights == {"A": 0.5, "B": 0.5}
+
+
+def test_wrong_structure_is_rejected_when_reading_target_weights(local):
+    with open(local.path, "w", encoding="utf-8") as f:
+        json.dump({"holdings": {}, "target_weights": "oops"}, f)
+    with pytest.raises(ps.StoreError):
+        ps.load_user_data(local)
 
 
 def test_local_repo_paths_map_under_data_folder():
@@ -256,7 +282,7 @@ def test_new_portfolios_document_is_stamped_with_the_current_schema_version(loca
 
 
 def test_new_holdings_document_is_stamped_with_the_current_schema_version(local):
-    ps.save_holdings(local, {"A": 1})
+    ps.save_holdings(local, {"A": 1}, {})
     raw = json.load(open(local.path, encoding="utf-8"))
     assert raw["schema_version"] == schema.SCHEMA_VERSION
 

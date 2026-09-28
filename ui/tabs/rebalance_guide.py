@@ -14,16 +14,18 @@ TARGET_WEIGHTS_PCT = {t: round(w * 100, 1) for t, w in DEFAULT_TARGET_WEIGHTS.it
 
 def _default_table(user_store):
     try:
-        saved_holdings = ps.load_holdings(user_store)
+        saved_holdings, saved_weights = ps.load_user_data(user_store)
     except ps.StoreError as e:
-        saved_holdings = {}
-        st.warning(f"저장된 보유 수량을 불러오지 못했습니다: {e}")
-    tickers = list(DEFAULT_TARGET_WEIGHTS) + [t for t in saved_holdings if t not in DEFAULT_TARGET_WEIGHTS]
+        saved_holdings, saved_weights = {}, {}
+        st.warning(f"저장된 보유 수량·목표 비중을 불러오지 못했습니다: {e}")
+    extra_tickers = [t for t in list(saved_holdings) + list(saved_weights) if t not in DEFAULT_TARGET_WEIGHTS]
+    tickers = list(DEFAULT_TARGET_WEIGHTS) + list(dict.fromkeys(extra_tickers))
+    weights_pct = {**TARGET_WEIGHTS_PCT, **{t: round(w * 100, 4) for t, w in saved_weights.items()}}
     return pd.DataFrame({
         "티커": tickers,
         "종목명": [ticker_name(t) for t in tickers],
         "현재 수량": [int(saved_holdings.get(t, 0)) for t in tickers],
-        "목표 비중(%)": [float(TARGET_WEIGHTS_PCT.get(t, 0.0)) for t in tickers],
+        "목표 비중(%)": [float(weights_pct.get(t, 0.0)) for t in tickers],
     })
 
 
@@ -93,7 +95,7 @@ def render(ctx):
     state.ensure(state.RB_VERSION, lambda: 0)
 
     st.subheader("현재 수량 · 목표 비중")
-    st.caption("표에서 현재 수량(주)과 목표 비중(%)을 직접 수정하세요. 현재 수량은 '내 보유 수량 저장'으로 저장하면 나만 볼 수 있고 다음 접속 때 자동으로 불러옵니다.")
+    st.caption("표에서 현재 수량(주)과 목표 비중(%)을 직접 수정하세요. '내 설정 저장'을 누르면 둘 다 나만 볼 수 있게 저장되고 다음 접속 때 자동으로 불러옵니다.")
     edited = ticker_table_editor(
         state.RB_TABLE, state.RB_VERSION,
         {
@@ -116,10 +118,10 @@ def render(ctx):
     row_controls(state.RB_TABLE, state.RB_VERSION, edited,
                  lambda t: {"티커": t, "종목명": ticker_name(t), "현재 수량": 0, "목표 비중(%)": 0.0}, "rb")
 
-    if st.button("내 보유 수량 저장", key="save_holdings_button"):
+    if st.button("내 설정 저장 (현재 수량 · 목표 비중)", key="save_holdings_button"):
         try:
-            ps.save_holdings(ctx.user_store, current_holdings)
-            st.success("보유 수량을 저장했습니다. 다음에 접속하면 자동으로 불러옵니다.")
+            ps.save_holdings(ctx.user_store, current_holdings, target_weights)
+            st.success("현재 수량과 목표 비중을 저장했습니다. 다음에 접속하면 자동으로 불러옵니다.")
         except ps.StoreError as e:
             st.error(f"저장 실패: {e}")
 

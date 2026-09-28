@@ -112,15 +112,33 @@ def load_holdings(backend):
     return load_holdings_document(raw).get("holdings", {})
 
 
-def save_holdings(backend, holdings):
-    clean = {}
+def load_user_data(backend):
+    """사용자별 파일에서 보유 수량과 목표 비중을 한 번의 읽기로 함께 가져온다. (holdings, target_weights)"""
+    raw, _ = backend.read()
+    doc = load_holdings_document(raw)
+    return doc.get("holdings", {}), doc.get("target_weights", {})
+
+
+def save_holdings(backend, holdings, target_weights):
+    clean_holdings = {}
     for ticker, shares in holdings.items():
         if not isinstance(shares, int) or shares < 0:
             raise StoreError(f"'{ticker}' 보유 수량은 0 이상의 정수여야 합니다.")
-        clean[ticker] = shares
+        clean_holdings[ticker] = shares
+
+    clean_weights = {}
+    for ticker, weight in target_weights.items():
+        try:
+            number = float(weight)
+        except (TypeError, ValueError):
+            raise StoreError(f"'{ticker}' 목표 비중이 숫자가 아닙니다: {weight!r}") from None
+        if number < 0:
+            raise StoreError(f"'{ticker}' 목표 비중은 0 이상이어야 합니다: {number!r}")
+        clean_weights[ticker] = number
 
     def mutate(data):
-        data["holdings"] = clean
+        data["holdings"] = clean_holdings
+        data["target_weights"] = clean_weights
         data["updated_at"] = datetime.now(KST).isoformat(timespec="seconds")
         data.pop("portfolios", None)
     return update(backend, mutate, "Update holdings", document_loader=load_holdings_document)

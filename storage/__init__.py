@@ -16,6 +16,7 @@ from .repository import (
     import_portfolios,
     load,
     load_holdings,
+    load_user_data,
     make_portfolio,
     save_holdings,
     update,
@@ -26,6 +27,6 @@ from .repository import (
 __all__ = [
     "DATA_PATH", "GitHubBackend", "LocalBackend", "LOCAL_PATH", "get_backend", "user_path",
     "ConflictError", "StoreError",
-    "can_modify", "delete_portfolios", "import_portfolios", "load", "load_holdings",
+    "can_modify", "delete_portfolios", "import_portfolios", "load", "load_holdings", "load_user_data",
     "make_portfolio", "save_holdings", "update", "upsert_portfolio", "validate_import",
 ]
